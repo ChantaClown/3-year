@@ -1,5 +1,24 @@
+ENV["PYTHON"]="/usr/bin/python3.12"
 
-function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=Float32)
+begin
+    import Pkg;
+    Pkg.add("XLSX");
+    Pkg.add("FileIO");
+    Pkg.add("JLD2");
+    Pkg.add("Flux");
+    Pkg.add("ScikitLearn");
+    Pkg.add("Plots");
+    Pkg.add("MAT");
+    Pkg.add("Images");
+    Pkg.add("DelimitedFiles");
+    Pkg.add("CSV");
+    Pkg.update()
+end
+using Pkg
+Pkg.build("PyCall")
+Pkg.build("ScikitLearn")
+
+ function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=Float32)
     #=
     abspath = abspath("file.txt")
     "/Users/username/file.txt"
@@ -28,6 +47,6 @@ function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=
     # Primera columana de data_cleaned ?
     sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
     concatenated_vectors = hcat(sin_inputs, cos_inputs)
-    
+
     return hcat(concatenated_vectors, data_cleaned), vec(encoded_targets)
 end;

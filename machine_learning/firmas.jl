@@ -14,7 +14,7 @@ function fileNamesFolder(folderName::String, extension::String)
         fileNames_no_extension = map(f -> splitext(f)[1], fileNames)
         return(fileNames_no_extension)
     else
-        error("El directorio no existe")
+        error("The directory doesn't exist")
     end
 end;
 
@@ -31,9 +31,16 @@ end;
 
 function loadImage(imageName::String, datasetFolder::String;
     datasetType::DataType=Float32, resolution::Int=128)
-    #
-    # Codigo a desarrollar
-    #
+    if !isfile(imageFile)
+        return nothing
+    end
+
+    image = load(imageFile)
+    image = Gray.(image) # Convierte la imagen a escala de grises
+    image = imresize(image, (resolution, resolution)) # Cambia la resolución de la imagen
+    image = convert(Array{datasetType}, image) # Cambia el tipo de datos de la imagen
+
+    return image
 end;
 
 
@@ -48,9 +55,15 @@ end;
 
 function loadImagesNCHW(datasetFolder::String;
     datasetType::DataType=Float32, resolution::Int=128)
-    #
-    # Codigo a desarrollar
-    #
+    # Obtener los nombres de archivos sin extensión .tif en la carpeta
+    imageNames = fileNamesFolder(datasetFolder, ".tif")
+    # Cargar todas las imágenes usando broadcast
+    images = loadImage.(imageNames, Ref(datasetFolder); datasetType=datasetType, resolution=resolution)
+
+    validImages = filter(x -> x !== nothing, images)
+    imagesNCHW = convertImagesNCHW(validImages)
+
+    return imagesNCHW
 end;
 
 
@@ -73,7 +86,7 @@ function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:
     if -1 in labels
         train_targets[.!in.(train_targets, [setdiff(labels,-1)])] .= -1;
         test_targets[.!in.(test_targets, [setdiff(labels,-1)])] .= -1;
-    
+    end;
     # Seleccionamos las imagenes segun los targets
     train_indices = in.(train_targets, [labels])
     test_indices = in.(test_targets, [labels])
@@ -84,8 +97,8 @@ function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:
     test_targets_filtered = test_targets[test_indices]
     
     # Convertimos las imagenes a NCHW
-    train_images_nchw = convertImagesNCHW(train_images_filtered, datasetType)
-    test_images_nchw = convertImagesNCHW(test_images_filtered, datasetType)
+    train_images_nchw = convertImagesNCHW(train_images_filtered)
+    test_images_nchw = convertImagesNCHW(test_images_filtered)
 
     return train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered
 end;
