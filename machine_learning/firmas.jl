@@ -1,4 +1,3 @@
-using MAT;
 using FileIO;
 using JLD2;
 using Images;
@@ -9,9 +8,14 @@ using Images;
 
 
 function fileNamesFolder(folderName::String, extension::String)
-    #
-    # Codigo a desarrollar
-    #
+    if isdir(folderName)
+        extension = uppercase(extension); 
+        fileNames = filter(f -> endswith(uppercase(f), ".$extension"), readdir(folderName)) 
+        fileNames_no_extension = map(f -> splitext(f)[1], fileNames)
+        return(fileNames_no_extension)
+    else
+        error("El directorio no existe")
+    end
 end;
 
 
@@ -57,20 +61,33 @@ showImage(imagesNCHW1::AbstractArray{<:Real,4}, imagesNCHW2::AbstractArray{<:Rea
 
 
 function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:9, datasetType::DataType=Float32)
-    #=
-    param = datasetFolder, de tipo String, con el nombre de la carpeta donde está el archivo “MNIST.jld2”.
-    optional param = 
-        labels, de tipo AbstractArray{Int,1}, con las etiquetas a cargar.
-        datasetType, de tipo DataType, con el tipo de datos a devolver.
-    =#
+
     dataset = loadDataset("MNIST",datasetFolder)
 
+    train_images = dataset[1]
+    train_targets = dataset[2]
+    test_images = dataset[3]
+    test_targets = dataset[4]
+
+    # Todas las etiquetas restantes marcados como -1
     if -1 in labels
-        targets[.!in.(targets, [setdiff(labels,-1)])] .= -1;
-    inputs = in.(dataset[1], [labels])
-    targets = in.(dataset[3], [labels])
+        train_targets[.!in.(train_targets, [setdiff(labels,-1)])] .= -1;
+        test_targets[.!in.(test_targets, [setdiff(labels,-1)])] .= -1;
     
-    return convertImagesNCHW(dataset[0]), inputs, convertImagesNCHW(dataset[2]), targets
+    # Seleccionamos las imagenes segun los targets
+    train_indices = in.(train_targets, [labels])
+    test_indices = in.(test_targets, [labels])
+
+    train_images_filtered = train_images[train_indices, :]
+    train_targets_filtered = train_targets[train_indices]
+    test_images_filtered = test_images[test_indices, :]
+    test_targets_filtered = test_targets[test_indices]
+    
+    # Convertimos las imagenes a NCHW
+    train_images_nchw = convertImagesNCHW(train_images_filtered, datasetType)
+    test_images_nchw = convertImagesNCHW(test_images_filtered, datasetType)
+
+    return train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered
 end;
 
 
@@ -84,28 +101,22 @@ function intervalDiscreteVector(data::AbstractArray{<:Real,1})
     # Si todas las diferencias son multiplos exactos (valores enteros) de esa diferencia, entonces es un vector de valores discretos
     isInteger(x::Float64, tol::Float64) = abs(round(x)-x) < tol
     return all(isInteger.(differences./minDifference, 1e-3)) ? minDifference : 0.
-end
+end;
 
 
 function cyclicalEncoding(data::AbstractArray{<:Real,1})
     
-    #=
-    Dado un vector de valores reales, interpreta estos datos como cíclicos, y
-    realiza su codificación como senos y cosenos. 
-    Recibe como parámetro obligatorio:o data, de tipo AbstractArray{<:Real,1}, 
-    con los valores del atributo a codificar.
-    
-    Esta función se apoya en una llamada a la función
-    intervalDiscreteVector, que devuelve el valor de m de la ecuación anterior, que puede tener
-    un valor igual a 0, para aplicar la ecuación anterior. Una vez aplicada, solamente queda
-    realizar el cálculo de los senos y los cosenos de estos ángulos.
-    
-    Esta función debe devolver una tupla con 2 vectores: senos y cosenos (por este orden)
-    resultados de realizar esta codificación.
-    =#
     m = intervalDiscreteVector(data)
-    senos .=  sin(2 * MAT.pi * ((data(:) - minimum) / (maximum - minimum + m)))
-    cosenos .= cos(2 * MAT.pi * ((data(:) - minimum) / (maximum - minimum + m)))
+    data_min = minimum(data)
+    data_max = maximum(data)
+    
+    # Obtener los datos normalizados
+    # (m != 0 ? m : 1e-6) -> necesario el uso de un valor que evite la division por cero ?
+    normalized_data = (data .- data_min) ./ (data_max - data_min + m)
+    
+    # Calculo de los vectores de sin/cos
+    senos =  sin.(2 * pi .* normalized_data)
+    cosenos = cos.(2 * pi .* normalized_data)
     return (senos, cosenos)
 end;
 
@@ -114,11 +125,35 @@ end;
 function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=Float32)
 
     #=
-    Este dataset se provee como dos archivos, de nombres "elec2_data.dat" y "elec2_label.dat",
-    con las entradas y salidas deseadas respectivamente.
+    abspath = abspath("file.txt")
+    "/Users/username/file.txt"
+    
+    joinpath = joinpath("path", "to", "file.txt")
+    "path/to/file.txt"
+
+    readdlm = numeric_data = readdlm("numeric_data.txt", ',', '\n')
+    3×2 Array{Float64,2}:
+    1.0   2.0
+    3.0   4.0
+    5.0   6.0
     =#
-    data = read
-    label = 
+    inputs, targets = loadDataset("elec2", datasetFolder)
+    # Procesado de targets
+    encoded_targets = cyclicalEncoding(targets)
+
+    # Procesado de inputs
+    path = joinpath(abspath(inputs))
+    matrix_inputs = readdlm(path, ' ')
+
+    # Eliminamos las matrices 1 y 4
+    columns = setdiff(1:size(matrix_inputs,2), [1,4]) 
+
+    data_cleaned = matrix_inputs[:, columns]
+    # Primera columana de data_cleaned ?
+    sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
+    concatenated_vectors = hcat(sin_inputs, cos_inputs)
+    
+    return hcat(concatenated_vectors, data_cleaned), vec(encoded_targets)
 end;
 
 
@@ -409,4 +444,3 @@ function predictKNN_SVM(dataset::Batch, instances::AbstractArray{<:Real,2}, k::I
     # Codigo a desarrollar
     #
 end;
-
