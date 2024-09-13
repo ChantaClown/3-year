@@ -1,0 +1,15 @@
+# Ignore the virtual environment directory named Deep-Learning
+/deep_learning/Deep-Learning/
+
+# Optionally ignore other files or directories
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Ignore Jupyter notebook checkpoints (if applicable)
+.ipynb_checkpoints/
+
+# Ignore other environment-specific files (optional)
+.vscode/
+.idea/
