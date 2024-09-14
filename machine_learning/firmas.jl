@@ -1,6 +1,7 @@
 using FileIO;
 using JLD2;
 using Images;
+using DelimitedFiles;
 
 # ----------------------------------------------------------------------------------------------
 # ------------------------------------- Ejercicio 1 --------------------------------------------
@@ -19,23 +20,53 @@ function fileNamesFolder(folderName::String, extension::String)
 end;
 
 
-
 function loadDataset(datasetName::String, datasetFolder::String;
     datasetType::DataType=Float32)
-    #
-    # Codigo a desarrollar
-    #
-end;
+    
+    # Full path of the file
+    filePath = joinpath(abspath(datasetFolder), datasetName)
 
+    # Check if the file exist
+    if !isfile(filePath)
+        return nothing
+    end
+
+    file = readdlm(filePath, '\t', header=true)
+    # Data and headers
+    rawData, headers = file
+    # Search the first header that matches targets
+    headers_vec = vec(headers)
+    targets_col = findfirst(isequal("target"), headers_vec)
+    
+    if isnothing(targets_col)
+        error("The Dataset doesn't exist.")
+    end;
+    # Select the cols that aren't targets
+    inputs = rawData[:, setdiff(1:size(rawData, 2), targets_col)]
+    targets = rawData[:, targets_col]
+
+    # Convert into the correct DataTypes
+    if !isnothing(datasetType)
+        inputs = convert(Matrix{datasetType}, inputs)
+    else
+        inputs = convert(Matrix{Float32}, inputs)
+    end
+    targets = convert(Vector{Bool}, vec(targets))
+
+    return inputs, targets
+end;
 
 
 function loadImage(imageName::String, datasetFolder::String;
     datasetType::DataType=Float32, resolution::Int=128)
-    if !isfile(imageFile)
+    
+    filePath = joinpath(abspath(datasetFolder), imageName * ".tif")
+
+    if !isfile(filePath)
         return nothing
     end
 
-    image = load(imageFile)
+    image = load(filePath)
     image = Gray.(image) # Convierte la imagen a escala de grises
     image = imresize(image, (resolution, resolution)) # Cambia la resolución de la imagen
     image = convert(Array{datasetType}, image) # Cambia el tipo de datos de la imagen
@@ -55,8 +86,14 @@ end;
 
 function loadImagesNCHW(datasetFolder::String;
     datasetType::DataType=Float32, resolution::Int=128)
+    
+
+    if !isdir(datasetFolder)
+        return nothing
+    end
+
     # Obtener los nombres de archivos sin extensión .tif en la carpeta
-    imageNames = fileNamesFolder(datasetFolder, ".tif")
+    imageNames = fileNamesFolder(datasetFolder, "tif")
     # Cargar todas las imágenes usando broadcast
     images = loadImage.(imageNames, Ref(datasetFolder); datasetType=datasetType, resolution=resolution)
 
