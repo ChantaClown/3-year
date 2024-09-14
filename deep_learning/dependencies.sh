@@ -13,6 +13,6 @@ source Deep-Learning/bin/activate
 
 # Dependencies
 pip install --upgrade pip
-pip install keras tensorflow jupyter numpy
+pip install -r requirements.txt
 
 echo "Environment setup is complete."
