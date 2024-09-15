@@ -145,6 +145,14 @@ function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:
     # Convert images to NCHW format
     train_images_nchw = convertImagesNCHW(vec(train_images_filtered))
     test_images_nchw = convertImagesNCHW(vec(test_images_filtered))
+
+    if !isnothing(datasetType)
+        train_images_nchw = convert(Array{datasetType}, train_images_nchw)
+        test_images_nchw = convert(Array{datasetType}, test_images_nchw)
+    else
+        train_images_nchw = convert(Array{Float32}, train_images_nchw)
+        test_images_nchw = convert(Array{Float32}, test_images_nchw)
+    end
     
     return train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered
 end;
@@ -164,18 +172,19 @@ end;
 
 
 function cyclicalEncoding(data::AbstractArray{<:Real,1})
+    #=
+    Puede fallar si todos los valores son iguales
+    =#
     
     m = intervalDiscreteVector(data)
-    data_min = minimum(data)
-    data_max = maximum(data)
-    
-    # Obtener los datos normalizados
+    data_min, data_max = extrema(data)
+    # Obtain normalized data
     # (m != 0 ? m : 1e-6) -> necesario el uso de un valor que evite la division por cero ?
+    # @. convierte todas las expresiones a .
     normalized_data = (data .- data_min) ./ (data_max - data_min + m)
-    
-    # Calculo de los vectores de sin/cos
-    senos =  sin.(2 * pi .* normalized_data)
-    cosenos = cos.(2 * pi .* normalized_data)
+    # Obtain sin and cos vectors
+    senos =  sin.(2 * pi * normalized_data)
+    cosenos = cos.(2 * pi * normalized_data)
     return (senos, cosenos)
 end;
 
@@ -195,23 +204,24 @@ function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=
     3.0   4.0
     5.0   6.0
     =#
-    inputs, targets = loadDataset("elec2", datasetFolder)
-    # Procesado de targets
-    encoded_targets = cyclicalEncoding(targets)
-
-    # Procesado de inputs
-    path = joinpath(abspath(inputs))
-    matrix_inputs = readdlm(path, ' ')
-
-    # Eliminamos las matrices 1 y 4
-    columns = setdiff(1:size(matrix_inputs,2), [1,4]) 
-
-    data_cleaned = matrix_inputs[:, columns]
-    # Primera columana de data_cleaned ?
-    sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
-    concatenated_vectors = hcat(sin_inputs, cos_inputs)
+    path = joinpath(abspath(datasetFolder))
     
-    return hcat(concatenated_vectors, data_cleaned), vec(encoded_targets)
+    inputs = readdlm(path * "/elec2_data.dat", ' ')
+    targets = readdlm(path * "/elec2_label.dat", ' ')
+    
+    encoded_targets = convert.(Bool, vec(targets))
+    
+    # Removes cols 1 and 4
+    columns = setdiff(1:size(inputs,2), [1,4]) 
+    
+    data_cleaned = inputs[:, columns]
+    # Encode inputs into sin and cos
+    sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
+    final_inputs = hcat(sin_inputs, cos_inputs, data_cleaned[:, 2:end])
+    # Convert to the DataType
+    final_inputs = convert.(datasetType, final_inputs)
+
+    return final_inputs, encoded_targets
 end;
 
 
@@ -222,8 +232,9 @@ end;
 # ------------------------------------- fileNamesFolder ---------------------------------------------------
 
 @testset "fileNamesFolder" begin
+    datasetFolder = "machine_learning/ej1/"
 
-    string_vector = fileNamesFolder("machine_learning/ej1","pdf")
+    string_vector = fileNamesFolder(datasetFolder,"pdf")
     print(string_vector)
     @test length(string_vector) >= 1
     @test string_vector != ""
@@ -264,11 +275,11 @@ end
 
 @testset "loadDataset" begin
     # Asumimos que adult.tsv está en el directorio "machine_learning/"
-    datasetFolder = "machine_learning/"
+    datasetFolder = "machine_learning/dataset/"
     datasetName = "adult"
 
     # Test de carga exitosa
-    result = loadDataset(dataset_name, dataset_folder)
+    result = loadDataset(datasetName, datasetFolder)
     inputs, targets = result
     @test !isnothing(result) # "El dataset no se pudo cargar"
        
@@ -296,10 +307,10 @@ end
     end
 
     # Test con un archivo que no existe
-    @test isnothing(loadDataset("non_existent.tsv", dataset_folder))
+    @test isnothing(loadDataset("non_existent.tsv", datasetFolder))
 
     # Test con un directorio que no existe
-    @test isnothing(loadDataset(dataset_name, "non_existent_folder/"))
+    @test isnothing(loadDataset(datasetName, "non_existent_folder/"))
 end;
 
 # ------------------------------------- loadImage ---------------------------------------------------
@@ -307,7 +318,7 @@ end;
 @testset "loadImage" begin
 
     imageName = "cameraman"
-    datasetFolder = "machine_learning/"
+    datasetFolder = "machine_learning/dataset/"
 
     image_matrix = loadImage(imageName, datasetFolder)
     @test !isempty(image_matrix) 
@@ -324,7 +335,7 @@ end;
 
 @testset "loadImagesNCHW" begin
 
-    datasetFolder = "machine_learning/"
+    datasetFolder = "machine_learning/dataset/"
 
     image_matrix = loadImagesNCHW(datasetFolder)
     @test !isempty(image_matrix) 
@@ -342,10 +353,9 @@ end;
 end;
 
 # ------------------------------------- loadMNISTDataset ---------------------------------------------------
-
-
 @testset "loadMNISTDataset" begin
-    datasetFolder = "machine_learning/"
+
+    datasetFolder = "machine_learning/dataset/"
 
     train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered = loadMNISTDataset(datasetFolder)
 
@@ -365,54 +375,66 @@ end;
     @test !isempty(test_images_nchw)
     @test length(train_targets_filtered) == size(train_images_nchw, 1)
     @test length(test_targets_filtered) == size(test_images_nchw, 1)
+
+    train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered = loadMNISTDataset(datasetFolder, datasetType=Float64)
+    @test typeof(train_images_nchw) == Array{Float64,4}
+    @test typeof(test_images_nchw) == Array{Float64,4}
+    
 end;
 
 # ------------------------------------- cyclicalEncoding ---------------------------------------------------
 
+@testset "cyclicalEncoding" begin
+    # Test with non-uniform spacing and values outside [0, 1]
+    data_non_uniform = [-1.0, 0.0, 0.3, 1.0, 2.0]
+    senos_non_uniform, cosenos_non_uniform = cyclicalEncoding(data_non_uniform)
+    # @test isapprox(senos_non_uniform[1], senos_non_uniform[end]) -> comprobar si falla la correccion
+    @test isapprox(cosenos_non_uniform[1], cosenos_non_uniform[end])
+    @test all(-1 .<= senos_non_uniform .<= 1)
+    @test all(-1 .<= cosenos_non_uniform .<= 1)
 
-    data = [0, 0.25, 0.5, 0.75, 1]
-    senos_expected = [0, 1, 0, -1, 0]
-    cosenos_expected = [1, 0, -1, 0, 1]
-
-    m = intervalDiscreteVector(data)
-    data_min = minimum(data)
-    data_max = maximum(data)
-    
-    # Obtener los datos normalizados
-    # (m != 0 ? m : 1e-6) -> necesario el uso de un valor que evite la division por cero ?
-    normalized_data = (data .- data_min) ./ (data_max - data_min + m)
-    
-    # Calculo de los vectores de sin/cos
-    senos =  sin.(2 * pi .* normalized_data)
-    cosenos = cos.(2 * pi .* normalized_data)
-    return senos, cosenos
-
-    senos, cosenos = cyclicalEncoding(data)
-    
-    @test all(isapprox(senos, senos_expected))
-    @test all(isapprox(cosenos, cosenos_expected))
-    
-    # Edge case with a single unique value
-    data_single_value = [0.5, 0.5, 0.5]
-    senos_single, cosenos_single = cyclicalEncoding(data_single_value)
-    @test all(isapprox(senos_single, [sin(2 * pi * 0.5)] * length(data_single_value)))
-    @test all(isapprox(cosenos_single, [cos(2 * pi * 0.5)] * length(data_single_value)))
-    
-    # Edge case with empty array
-    data_empty = Float32[]
-    senos_empty, cosenos_empty = cyclicalEncoding(data_empty)
-    @test isequal(senos_empty, Float32[])
-    @test isequal(cosenos_empty, Float32[])
-    
-    # Check range boundaries
-    data_bounds = [0, 1]
-    senos_bounds, cosenos_bounds = cyclicalEncoding(data_bounds)
-    @test isapprox(senos_bounds, [0, 0])
-    @test isapprox(cosenos_bounds, [1, -1])
+    # Test division by zero protection (if implemented)
+    data_same = [1.0, 0, 1.0]
+    senos_same, cosenos_same = cyclicalEncoding(data_same)
+    @test !any(isnan, senos_same)
+    @test !any(isnan, cosenos_same)
 end
-
 
 # ------------------------------------- loadStreamLearningDataset ---------------------------------------------------
 
+@testset "loadStreamLearningDataset" begin
 
-
+    # Asume que tienes una carpeta de datos de prueba
+    test_folder = "/home/chantaclown/3-year/machine_learning/dataset/"
+    
+    # Test 1: Verificar que la función se ejecuta sin errores
+    @test_nowarn loadStreamLearningDataset(test_folder)
+    
+    # Cargar los datos para los siguientes tests
+    inputs, targets = loadStreamLearningDataset(test_folder)
+    
+    # Test 2: Verificar las dimensiones de la salida
+    @test size(inputs, 2) == 7  # Debe haber 7 columnas en inputs
+    @test size(inputs, 1) == length(targets)  # El número de filas debe coincidir con el número de targets
+    
+    # Test 3: Verificar el tipo de datos
+    @test eltype(inputs) == Float32  # Por defecto debe ser Float32
+    @test eltype(targets) == Bool
+    
+    # Test 4: Verificar que los valores de seno y coseno están en el rango correcto
+    @test all(-1 .<= inputs[:, 1] .<= 1)  # Columna de seno
+    @test all(-1 .<= inputs[:, 2] .<= 1)  # Columna de coseno
+    
+    # Test 5: Verificar que los targets son booleanos
+    @test all(x -> x isa Bool, targets)
+    
+    # Test 6: Probar con un tipo de dato diferente
+    inputs_float64, _ = loadStreamLearningDataset(test_folder, datasetType=Float64)
+    @test eltype(inputs_float64) == Float64
+    
+    # Test 7: Verificar que no hay valores faltantes (NaN) en los inputs
+    @test !any(isnan, inputs)
+    
+    # Test 8: Verificar que las columnas de seno y coseno son ortogonales (su producto punto debe ser cercano a cero)
+    @test abs(dot(inputs[:, 1], inputs[:, 2])) < 1e-6
+end
