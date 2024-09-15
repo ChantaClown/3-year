@@ -7,7 +7,6 @@ using DelimitedFiles;
 # ------------------------------------- Ejercicio 1 --------------------------------------------
 # ----------------------------------------------------------------------------------------------
 
-
 function fileNamesFolder(folderName::String, extension::String)
     if isdir(folderName)
         extension = uppercase(extension); 
@@ -24,7 +23,7 @@ function loadDataset(datasetName::String, datasetFolder::String;
     datasetType::DataType=Float32)
     
     # Full path of the file
-    filePath = joinpath(abspath(datasetFolder), datasetName)
+    filePath = joinpath(abspath(datasetFolder), datasetName * ".tsv")
 
     # Check if the file exist
     if !isfile(filePath)
@@ -34,6 +33,7 @@ function loadDataset(datasetName::String, datasetFolder::String;
     file = readdlm(filePath, '\t', header=true)
     # Data and headers
     rawData, headers = file
+
     # Search the first header that matches targets
     headers_vec = vec(headers)
     targets_col = findfirst(isequal("target"), headers_vec)
@@ -55,6 +55,7 @@ function loadDataset(datasetName::String, datasetFolder::String;
 
     return inputs, targets
 end;
+
 
 
 function loadImage(imageName::String, datasetFolder::String;
@@ -109,34 +110,47 @@ showImage(imagesNCHW ::AbstractArray{<:Real,4}                                  
 showImage(imagesNCHW1::AbstractArray{<:Real,4}, imagesNCHW2::AbstractArray{<:Real,4}) = display(Gray.(vcat(hcat([imagesNCHW1[i,1,:,:] for i in 1:size(imagesNCHW1,1)]...), hcat([imagesNCHW2[i,1,:,:] for i in 1:size(imagesNCHW2,1)]...))));
 
 
-
 function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:9, datasetType::DataType=Float32)
 
-    dataset = loadDataset("MNIST",datasetFolder)
+    filePath = joinpath(abspath(datasetFolder), "MNIST.jld2")
 
-    train_images = dataset[1]
-    train_targets = dataset[2]
-    test_images = dataset[3]
-    test_targets = dataset[4]
-
-    # Todas las etiquetas restantes marcados como -1
+    # Check if the file exist
+    if !isfile(filePath)
+        return nothing
+    end
+    
+    dataset = JLD2.load(filePath)
+    train_images = dataset["train_imgs"]
+    train_targets = dataset["train_labels"]
+    test_images = dataset["test_imgs"]
+    test_targets = dataset["test_labels"]
+    
+    # All other tags labeled as -1
     if -1 in labels
         train_targets[.!in.(train_targets, [setdiff(labels,-1)])] .= -1;
         test_targets[.!in.(test_targets, [setdiff(labels,-1)])] .= -1;
     end;
-    # Seleccionamos las imagenes segun los targets
+    # Select the indicated targets
     train_indices = in.(train_targets, [labels])
     test_indices = in.(test_targets, [labels])
-
+    
     train_images_filtered = train_images[train_indices, :]
     train_targets_filtered = train_targets[train_indices]
     test_images_filtered = test_images[test_indices, :]
     test_targets_filtered = test_targets[test_indices]
     
-    # Convertimos las imagenes a NCHW
-    train_images_nchw = convertImagesNCHW(train_images_filtered)
-    test_images_nchw = convertImagesNCHW(test_images_filtered)
+    # Convert images to NCHW format
+    train_images_nchw = convertImagesNCHW(vec(train_images_filtered))
+    test_images_nchw = convertImagesNCHW(vec(test_images_filtered))
 
+    if !isnothing(datasetType)
+        train_images_nchw = convert(Array{datasetType}, train_images_nchw)
+        test_images_nchw = convert(Array{datasetType}, test_images_nchw)
+    else
+        train_images_nchw = convert(Array{Float32}, train_images_nchw)
+        test_images_nchw = convert(Array{Float32}, test_images_nchw)
+    end
+    
     return train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered
 end;
 
@@ -155,21 +169,21 @@ end;
 
 
 function cyclicalEncoding(data::AbstractArray{<:Real,1})
+    #=
+    Puede fallar si todos los valores son iguales
+    =#
     
     m = intervalDiscreteVector(data)
-    data_min = minimum(data)
-    data_max = maximum(data)
-    
-    # Obtener los datos normalizados
+    data_min, data_max = extrema(data)
+    # Obtain normalized data
     # (m != 0 ? m : 1e-6) -> necesario el uso de un valor que evite la division por cero ?
+    # @. convierte todas las expresiones a .
     normalized_data = (data .- data_min) ./ (data_max - data_min + m)
-    
-    # Calculo de los vectores de sin/cos
-    senos =  sin.(2 * pi .* normalized_data)
-    cosenos = cos.(2 * pi .* normalized_data)
+    # Obtain sin and cos vectors
+    senos =  sin.(2 * pi * normalized_data)
+    cosenos = cos.(2 * pi * normalized_data)
     return (senos, cosenos)
 end;
-
 
 
 function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=Float32)
@@ -187,23 +201,24 @@ function loadStreamLearningDataset(datasetFolder::String; datasetType::DataType=
     3.0   4.0
     5.0   6.0
     =#
-    inputs, targets = loadDataset("elec2", datasetFolder)
-    # Procesado de targets
-    encoded_targets = cyclicalEncoding(targets)
-
-    # Procesado de inputs
-    path = joinpath(abspath(inputs))
-    matrix_inputs = readdlm(path, ' ')
-
-    # Eliminamos las matrices 1 y 4
-    columns = setdiff(1:size(matrix_inputs,2), [1,4]) 
-
-    data_cleaned = matrix_inputs[:, columns]
-    # Primera columana de data_cleaned ?
-    sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
-    concatenated_vectors = hcat(sin_inputs, cos_inputs)
+    path = joinpath(abspath(datasetFolder))
     
-    return hcat(concatenated_vectors, data_cleaned), vec(encoded_targets)
+    inputs = readdlm(path * "/elec2_data.dat", ' ')
+    targets = readdlm(path * "/elec2_label.dat", ' ')
+    
+    encoded_targets = convert.(Bool, vec(targets))
+    
+    # Removes cols 1 and 4
+    columns = setdiff(1:size(inputs,2), [1,4]) 
+    
+    data_cleaned = inputs[:, columns]
+    # Encode inputs into sin and cos
+    sin_inputs, cos_inputs = cyclicalEncoding(data_cleaned[:,1])
+    final_inputs = hcat(sin_inputs, cos_inputs, data_cleaned[:, 2:end])
+    # Convert to the DataType
+    final_inputs = convert.(datasetType, final_inputs)
+
+    return final_inputs, encoded_targets
 end;
 
 

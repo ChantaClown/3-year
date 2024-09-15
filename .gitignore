@@ -1,7 +1,6 @@
 # Ignore the virtual environment directory named Deep-Learning
 /deep_learning/Deep-Learning/
-/machine_learning/datasets.zip
-/machine_learning/MNIST.jld2
+/machine_learning/dataset/
 
 # Optionally ignore other files or directories
 *.pyc
