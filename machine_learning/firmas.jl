@@ -46,11 +46,7 @@ function loadDataset(datasetName::String, datasetFolder::String;
     targets = rawData[:, targets_col]
 
     # Convert into the correct DataTypes
-    if !isnothing(datasetType)
-        inputs = convert(Matrix{datasetType}, inputs)
-    else
-        inputs = convert(Matrix{Float32}, inputs)
-    end
+    inputs = convert(Matrix{datasetType}, inputs)
     targets = convert(Vector{Bool}, vec(targets))
 
     return inputs, targets
@@ -143,13 +139,8 @@ function loadMNISTDataset(datasetFolder::String; labels::AbstractArray{Int,1}=0:
     train_images_nchw = convertImagesNCHW(vec(train_images_filtered))
     test_images_nchw = convertImagesNCHW(vec(test_images_filtered))
 
-    if !isnothing(datasetType)
-        train_images_nchw = convert(Array{datasetType}, train_images_nchw)
-        test_images_nchw = convert(Array{datasetType}, test_images_nchw)
-    else
-        train_images_nchw = convert(Array{Float32}, train_images_nchw)
-        test_images_nchw = convert(Array{Float32}, test_images_nchw)
-    end
+    train_images_nchw = convert(Array{datasetType}, train_images_nchw)
+    test_images_nchw = convert(Array{datasetType}, test_images_nchw)
     
     return train_images_nchw, train_targets_filtered, test_images_nchw, test_targets_filtered
 end;
