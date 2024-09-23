@@ -1,6 +1,7 @@
 # Ignore the virtual environment directory named Deep-Learning
 /deep_learning/Deep-Learning/
 /machine_learning/dataset/
+/computer_vision/Computer-Vision
 
 # Optionally ignore other files or directories
 *.pyc
