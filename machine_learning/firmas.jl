@@ -223,22 +223,107 @@ using Flux
 indexOutputLayer(ann::Chain) = length(ann) - (ann[end]==softmax);
 
 function newClassCascadeNetwork(numInputs::Int, numOutputs::Int)
-    #
-    # Codigo a desarrollar
-    #
+    ann=Chain();
+    if (numOutputs == 1)
+        ann = Chain(ann..., Dense(numInputs, numOutputs, σ));
+    
+    else
+        ann = Chain(ann..., Dense(numInputs, numOutputs, identity))
+        ann = Chain(ann..., softmax);
+    end;
+    
+    return ann;
 end;
 
 function addClassCascadeNeuron(previousANN::Chain; transferFunction::Function=σ)
-    #
-    # Codigo a desarrollar
-    #
+    outputLayer    = previousANN[   indexOutputLayer(previousANN)   ]; 
+    previousLayers = previousANN[1:(indexOutputLayer(previousANN)-1)]; 
+    
+    numInputsOutputLayer  = size(outputLayer.weight, 2); 
+    numOutputsOutputLayer = size(outputLayer.weight, 1); 
+    
+    if numOutputsOutputLayer == 1
+        # Binary case
+        new_output_layers = [Dense(numInputsOutputLayer + 1, numOutputsOutputLayer, transferFunction)]
+    else
+        # Multi case
+        new_output_layers = [
+            Dense(numInputsOutputLayer + 1, numOutputsOutputLayer, identity),
+            softmax
+        ]
+    end
+
+    # New neuron layer
+    ann=Chain();
+    ann = Chain(
+            previousLayers...,  
+            SkipConnection(Dense(numInputsOutputLayer, 1, transferFunction), (mx, x) -> vcat(x, mx)),
+            new_output_layers...
+        )
+    
+    # Previous layer + new output + soft
+    newOutputLayer = ann[length(previousLayers) + 2]  
+    
+    newOutputLayer.weight[:, end] .= 0                       # Last col is all 0
+    newOutputLayer.weight[:, 1:end-1] .= outputLayer.weight  # Copy previous weights
+    newOutputLayer.bias .= outputLayer.bias                  # Copy bias
+
+    return ann
 end;
 
 function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}}, trainOnly2LastLayers::Bool;
     maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Si da fallo de size(inputs) == size(inputs), transponer estas matrices
+    (inputs, targets) = trainingDataset;
+
+    # Check if the inputs and targets are of the same sizes
+    # @assert(size(inputs,1)==size(targets,1));
+
+    # Loss function
+    loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
+
+    trainingLosses = Float32[];
+    numEpoch = 0;
+
+    # Get the loss for the cycle 0 (no training yet)
+    trainingLoss = loss(ann, inputs', targets');
+    push!(trainingLosses, trainingLoss);
+    # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
+
+    opt_state = Flux.setup(Adam(learningRate), ann);
+
+    if trainOnly2LastLayers
+        # Freeze all the layers except the last 2
+        Flux.freeze!(opt_state.layers[1:(indexOutputLayer(ann)-2)]); 
+    end
+
+    # Train until a stop condition is reached
+    while (numEpoch<maxEpochs) && (trainingLoss>minLoss) 
+
+        # Train cycle (0 if its the first one)
+        Flux.train!(loss, ann, [(inputs', targets')], opt_state);
+
+        numEpoch += 1;
+        # Calculamos las metricas en este ciclo
+        trainingLoss = loss(ann, inputs', targets');
+        push!(trainingLosses, trainingLoss);
+        # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
+        
+        # Calculate loss in the window for early stopping
+        if numEpoch >= lossChangeWindowSize
+            lossWindow = trainingLosses[end-lossChangeWindowSize+1:end];
+            minLossValue, maxLossValue = extrema(lossWindow);
+
+            if ((maxLossValue - minLossValue) / minLossValue) <= minLossChange
+                println("Stopping early at epoch $numEpoch due to minimal change in loss.");
+                break;
+            end
+        end
+    
+    end;
+
+    return (ann, trainingLosses);
 end;
 
 
@@ -246,18 +331,63 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}};
     transferFunction::Function=σ,
     maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Comprobar las transposiciones de las matrices
+
+    (inputs, targets) = trainingDataset
+
+    inputs = convert(Matrix{Float32}, inputs')
+    targets = targets'
+    
+    @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
+
+
+    # Create a ANN without hidden layers
+    ann = newClassCascadeNetwork(size(inputs,1),size(targets,1))
+
+    # Train the first ANN
+    ann, trainingLosses = trainClassANN!(ann, (inputs', targets'), false,
+        maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
+        minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
+
+    # Comprobar la condicion de este bucle
+    for neuronIdx in 1:maxNumNeurons
+
+        ann = addClassCascadeNeuron(ann, transferFunction=transferFunction)
+
+        if neuronIdx > 1
+            # Train freezing all layers except the last two
+            ann, lossVector = trainClassANN!(ann, (inputs', targets'), true,
+                maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
+                minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
+            # Concatenate loss vectors, skipping the first value
+            trainingLosses = vcat(trainingLosses, lossVector[2:end])
+        end
+    
+        # Tra   in the entire ANN
+        ann, lossVectorFull = trainClassANN!(ann, (inputs', targets'), false,
+            maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
+            minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
+        # Concatenate loss vectors, skipping the first value
+        trainingLosses = vcat(trainingLosses, lossVectorFull[2:end])
+    end;
+
+    # trainingLosses = convert(Vector{Float32}, trainingLosses), los vectores deberian ser Float32
+    return ann, trainingLosses
 end;
 
 function trainClassCascadeANN(maxNumNeurons::Int,
     trainingDataset::  Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,1}};
     transferFunction::Function=σ,
     maxEpochs::Int=100, minLoss::Real=0.0, learningRate::Real=0.01, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
-    #
-    # Codigo a desarrollar
-    #
+
+    inputs, targets = trainingDataset
+    reshaped_targets = reshape(targets, length(targets), 1)
+
+    # Llamar a la función original con las salidas convertidas
+    return trainClassCascadeANN(maxNumNeurons, (inputs, reshaped_targets);
+                                transferFunction=transferFunction, maxEpochs=maxEpochs, minLoss=minLoss, 
+                                learningRate=learningRate, minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 end;
     
 
