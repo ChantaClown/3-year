@@ -398,19 +398,26 @@ end;
 HopfieldNet = Array{Float32,2}
 
 function trainHopfield(trainingSet::AbstractArray{<:Real,2})
-    #
-    # Codigo a desarrollar
-    #
+
+    # Forumula de Hopfield
+    w = (1 / size(trainingSet,2)) * (transpose(trainingSet) * trainingSet)
+    # Diagonal a 0
+    w[diagind(w)] .= 0
+    w = convert(Matrix{Float32}, w)
+    @assert typeof(w) == Matrix{Float32}
+    return w
+
 end;
+
 function trainHopfield(trainingSet::AbstractArray{<:Bool,2})
-    #
-    # Codigo a desarrollar
-    #
+    # Convertir los 0 a -1
+    trainingSet = (2. .*trainingSet) .- 1
+    return trainHopfield(trainingSet)
 end;
+
 function trainHopfield(trainingSetNCHW::AbstractArray{<:Bool,4})
-    #
-    # Codigo a desarrollar
-    #
+    trainingSet = reshape(trainingSetNCHW, size(trainingSetNCHW,1), size(trainingSetNCHW,3)*size(trainingSetNCHW,4))
+    return trainHopfield(trainingSet)
 end;
 
 function stepHopfield(ann::HopfieldNet, S::AbstractArray{<:Real,1})
