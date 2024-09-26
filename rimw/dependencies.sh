@@ -10,7 +10,7 @@ sudo apt update -y
 
 # Install OpenJDK 17
 echo "Installing OpenJDK 20..."
-sudo apt-get install openjdk-21-jdk
+sudo apt-get install openjdk-21-jdk maven
 
 # Verify Java installation
 echo "Verifying Java installation..."
