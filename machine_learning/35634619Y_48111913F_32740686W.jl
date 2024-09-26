@@ -284,7 +284,6 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     (inputs, targets) = trainingDataset;
     
     # Check if the inputs and targets are of the same sizes
-    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -329,7 +328,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     
     end;
 
-    return (ann, trainingLosses);
+    return trainingLosses;
 end;
 
 
