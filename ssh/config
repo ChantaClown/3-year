@@ -1,11 +1,11 @@
-# Personal account
-Host github.com-personal
+# Cuenta principal
+Host github.com-main
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_rsa_personal
 
-# University account
-Host github.com-university
+# Segunda cuenta
+Host github.com-second
   HostName github.com
   User git
-  IdentityFile ~/.ssh/id_rsa_university
+  IdentityFile ~/.ssh/id_rsa_uni
