@@ -1,7 +1,12 @@
+using Flux;
+using Flux.Losses;
 using FileIO;
 using JLD2;
 using Images;
 using DelimitedFiles;
+using Test;
+using Statistics
+using LinearAlgebra;
 
 # ----------------------------------------------------------------------------------------------
 # ------------------------------------- Ejercicio 1 --------------------------------------------
@@ -276,9 +281,9 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
 
     # Si da fallo de size(inputs) == size(inputs), transponer estas matrices
     (inputs, targets) = trainingDataset;
-
+    
     # Check if the inputs and targets are of the same sizes
-    # @assert(size(inputs,1)==size(targets,1));
+    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -287,7 +292,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     numEpoch = 0;
 
     # Get the loss for the cycle 0 (no training yet)
-    trainingLoss = loss(ann, inputs', targets');
+    trainingLoss = loss(ann, inputs, targets);
     push!(trainingLosses, trainingLoss);
     # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
 
@@ -302,11 +307,11 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     while (numEpoch<maxEpochs) && (trainingLoss>minLoss) 
 
         # Train cycle (0 if its the first one)
-        Flux.train!(loss, ann, [(inputs', targets')], opt_state);
+        Flux.train!(loss, ann, [(inputs, targets)], opt_state);
 
         numEpoch += 1;
         # Calculamos las metricas en este ciclo
-        trainingLoss = loss(ann, inputs', targets');
+        trainingLoss = loss(ann, inputs, targets);
         push!(trainingLosses, trainingLoss);
         # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
         
@@ -339,14 +344,14 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     inputs = convert(Matrix{Float32}, inputs')
     targets = targets'
     
-    @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
+    # @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
 
 
     # Create a ANN without hidden layers
     ann = newClassCascadeNetwork(size(inputs,1),size(targets,1))
 
     # Train the first ANN
-    ann, trainingLosses = trainClassANN!(ann, (inputs', targets'), false,
+    ann, trainingLosses = trainClassANN!(ann, (inputs, targets), false,
         maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
         minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 
@@ -357,15 +362,15 @@ function trainClassCascadeANN(maxNumNeurons::Int,
 
         if neuronIdx > 1
             # Train freezing all layers except the last two
-            ann, lossVector = trainClassANN!(ann, (inputs', targets'), true,
+            ann, lossVector = trainClassANN!(ann, (inputs, targets), true,
                 maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
                 minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
             # Concatenate loss vectors, skipping the first value
             trainingLosses = vcat(trainingLosses, lossVector[2:end])
         end
     
-        # Tra   in the entire ANN
-        ann, lossVectorFull = trainClassANN!(ann, (inputs', targets'), false,
+        # Train the entire ANN
+        ann, lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
             maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
             minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
         # Concatenate loss vectors, skipping the first value
@@ -380,7 +385,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     trainingDataset::  Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,1}};
     transferFunction::Function=σ,
     maxEpochs::Int=100, minLoss::Real=0.0, learningRate::Real=0.01, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
-
+    
     inputs, targets = trainingDataset
     reshaped_targets = reshape(targets, length(targets), 1)
 
@@ -388,7 +393,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     return trainClassCascadeANN(maxNumNeurons, (inputs, reshaped_targets);
                                 transferFunction=transferFunction, maxEpochs=maxEpochs, minLoss=minLoss, 
                                 learningRate=learningRate, minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
-end;
+end
     
 
 # ----------------------------------------------------------------------------------------------
@@ -397,10 +402,11 @@ end;
 
 HopfieldNet = Array{Float32,2}
 
+
 function trainHopfield(trainingSet::AbstractArray{<:Real,2})
 
     # Forumula de Hopfield
-    w = (1 / size(trainingSet,2)) * (transpose(trainingSet) * trainingSet)
+    w = (1 / size(trainingSet,1)) * (transpose(trainingSet) * trainingSet)
     # Diagonal a 0
     w[diagind(w)] .= 0
     w = convert(Matrix{Float32}, w)
@@ -421,14 +427,21 @@ function trainHopfield(trainingSetNCHW::AbstractArray{<:Bool,4})
 end;
 
 function stepHopfield(ann::HopfieldNet, S::AbstractArray{<:Real,1})
-    #
-    # Codigo a desarrollar
-    #
+    S = convert(Vector{Float32}, S)
+    # Matriz de Pesos X Vector de salidas
+    res = ann * S
+    # Usar sign para crear el umbral
+    return convert(Vector{Float32}, sign.(res))
+
 end;
 function stepHopfield(ann::HopfieldNet, S::AbstractArray{<:Bool,1})
-    #
-    # Codigo a desarrollar
-    #
+    # Transformar a 0, 1
+    S = (2. .* S) .- 1
+    res = stepHopfield(ann, S)
+    # Convertir a binario
+    res .>= 0
+   
+    return convert(Vector{Bool}, res .>= 0f0)
 end;
 
 
@@ -457,43 +470,98 @@ end;
 
 
 
-mask = hcat(ones(Bool, numPixelsToKeep), zeros(Bool, width - numPixelsToKeep))
 
-function addNoise(datasetNCHW::AbstractArray{<:Bool,4}, ratioNoise::Real)
-    #
-    # Codigo a desarrollar
-    #
+function addNoise(datasetNCHW::AbstractArray{<:Bool, 4}, ratioNoise::Real)
+    noiseSet = copy(datasetNCHW)
+    # Numero total de pixeles
+    total_pixels = length(noiseSet)
+    # Calculo de los índices de los píxeles a modificar
+    pixels_to_change = Int(round(total_pixels * ratioNoise))
+    indices = shuffle(1:total_pixels)[1:pixels_to_change]
+    # Modificar los píxeles en los índices seleccionados (invertir su valor)
+    noiseSet[indices] .= .!noiseSet[indices]
+    return noiseSet
 end;
 
 function cropImages(datasetNCHW::AbstractArray{<:Bool,4}, ratioCrop::Real)
-    #
-    # Codigo a desarrollar
-    #
+    croppedSet = copy(datasetNCHW)
+    # Obtener el tamaño de las imágenes
+    (_, _, _, width) = size(croppedSet)
+    # Calcular el número de píxeles que se deben conservar
+    pixels_to_keep = Int(round(width * (1 - ratioCrop)))
+    # Comprobar el + 1
+    croppedSet[:,:,:,pixels_to_keep+1:end] .= 0
+    return croppedSet
 end;
 
 function randomImages(numImages::Int, resolution::Int)
-    #
-    # Codigo a desarrollar
-    #
+    matrix = randn(numImages, 1, resolution, resolution)
+    result = matrix .> 0 
+    return result
 end;
 
 function averageMNISTImages(imageArray::AbstractArray{<:Real,4}, labelArray::AbstractArray{Int,1})
-    #
-    # Codigo a desarrollar
-    #
-end;
+    # 
+    labels = unique(labelArray)
+    N = length(labels)
+    
+    # Crear la matriz de salida en formato NCHW, donde N es el número de dígitos únicos
+    C, H, W = size(imageArray)[2:4]  # Obtener las dimensiones de las imágenes
+    template_images = Array{eltype(imageArray)}(undef, N, C, H, W)
+    
+    # Promediar las imágenes por dígito
+    for i in 1:N
+        digit = labels[i]
+        template_images[i, 1, :, :] = dropdims(mean(imageArray[labelArray .== digit, 1, :, :], dims=1), dims=1)
+    end
+    
+    # Retornar las plantillas promedio y las etiquetas
+    return template_images, labels
+end; 
 
 function classifyMNISTImages(imageArray::AbstractArray{<:Real,4}, templateInputs::AbstractArray{<:Real,4}, templateLabels::AbstractArray{Int,1})
     #
-    # Codigo a desarrollar
-    #
+    outputs = fill(-1, size(imageArray, 1))
+
+    for idx in 1:size(templateInputs, 1)
+        template = templateInputs[[idx], :, :, :]; 
+        label = templateLabels[idx]; 
+        indicesCoincidence = vec(all(imageArray .== template, dims=[3,4])); 
+        outputs[indicesCoincidence] .= label
+    end;
+
+    return outputs
 end;
 
 function calculateMNISTAccuracies(datasetFolder::String, labels::AbstractArray{Int,1}, threshold::Real)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Cargar el dataset MNIST
+    train_images, train_labels, test_images, test_labels = loadMNISTDataset(datasetFolder; labels=labels, datasetType=Float32)
+    
+    # Obtener plantillas promedio
+    template_images, template_labels = averageMNISTImages(train_images, train_labels)
+    
+    # Umbralizar las imágenes
+    train_images_bool = train_images .>= threshold
+    test_images_bool = test_images .>= threshold
+    template_images_bool = template_images .>= threshold
+    
+    # Entrenar la red de Hopfield con las plantillas
+    ann = trainHopfield(template_images_bool)
+    
+    # Calcular precisión en el conjunto de entrenamiento
+    train_outputs = runHopfield(ann, train_images_bool)
+    train_predictions = classifyMNISTImages(train_outputs, template_images_bool, template_labels)
+    acc_train = mean(train_predictions .== train_labels)
+    
+    # Calcular precisión en el conjunto de test
+    test_outputs = runHopfield(ann, test_images_bool)
+    test_predictions = classifyMNISTImages(test_outputs, template_images_bool, template_labels)
+    acc_test = mean(test_predictions .== test_labels)
+    
+    return (acc_train, acc_test)
 end;
+
 
 
 

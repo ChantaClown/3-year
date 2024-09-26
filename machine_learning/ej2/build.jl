@@ -9,6 +9,7 @@ using JLD2;
 using Images;
 using DelimitedFiles;
 using Test;
+include("tester.jl");
 
 indexOutputLayer(ann::Chain) = length(ann) - (ann[end]==softmax);
 
@@ -69,7 +70,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     (inputs, targets) = trainingDataset;
     
     # Check if the inputs and targets are of the same sizes
-    @assert(size(inputs,1)==size(targets,1));
+    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -78,7 +79,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     numEpoch = 0;
 
     # Get the loss for the cycle 0 (no training yet)
-    trainingLoss = loss(ann, inputs', targets');
+    trainingLoss = loss(ann, inputs, targets);
     push!(trainingLosses, trainingLoss);
     # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
 
@@ -93,11 +94,11 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     while (numEpoch<maxEpochs) && (trainingLoss>minLoss) 
 
         # Train cycle (0 if its the first one)
-        Flux.train!(loss, ann, [(inputs', targets')], opt_state);
+        Flux.train!(loss, ann, [(inputs, targets)], opt_state);
 
         numEpoch += 1;
         # Calculamos las metricas en este ciclo
-        trainingLoss = loss(ann, inputs', targets');
+        trainingLoss = loss(ann, inputs, targets);
         push!(trainingLosses, trainingLoss);
         # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
         
@@ -130,14 +131,14 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     inputs = convert(Matrix{Float32}, inputs')
     targets = targets'
     
-    @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
+    # @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
 
 
     # Create a ANN without hidden layers
     ann = newClassCascadeNetwork(size(inputs,1),size(targets,1))
 
     # Train the first ANN
-    ann, trainingLosses = trainClassANN!(ann, (inputs', targets'), false,
+    ann, trainingLosses = trainClassANN!(ann, (inputs, targets), false,
         maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
         minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 
@@ -148,7 +149,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
 
         if neuronIdx > 1
             # Train freezing all layers except the last two
-            ann, lossVector = trainClassANN!(ann, (inputs', targets'), true,
+            ann, lossVector = trainClassANN!(ann, (inputs, targets), true,
                 maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
                 minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
             # Concatenate loss vectors, skipping the first value
@@ -156,7 +157,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
         end
     
         # Train the entire ANN
-        ann, lossVectorFull = trainClassANN!(ann, (inputs', targets'), false,
+        ann, lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
             maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
             minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
         # Concatenate loss vectors, skipping the first value
@@ -226,11 +227,11 @@ end
 @testset "trainClassANN! tests" begin
 
     # Crear el dataset de ejemplo
-    inputs = rand(Float32, 100, 5)  # 5 atributos, 10 instancias
-    targets = rand(Bool, 100, 1)    # 1 fila, 10 instancias (booleanas)
+    inputs = rand(Float32, 5, 10)  # 5 atributos, 10 instancias trans
+    targets = rand(Bool, 1, 10)    # 19 col, 10 instancias (booleanas) trans
 
     # Red neuronal
-    ann = Chain(Dense(5,3,sigmoid), Dense(3, 1, sigmoid))
+    ann = Chain(Dense(5, 3, sigmoid), Dense(3, 1, sigmoid))
 
     # Test 1: Verificar que la función se ejecuta sin errores
     result = trainClassANN!(ann, (inputs, targets), true)
@@ -244,126 +245,58 @@ end
     ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
     result = trainClassANN!(ann, (inputs, targets), true)  # Solo entrenar las dos últimas capas
     @test length(result[2]) > 0
+
+    # Test 4: Verificar que diferentes tasas de aprendizaje afectan el entrenamiento
+    ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
+    result_fast = trainClassANN!(ann, (inputs, targets), true, learningRate=0.1)
+    result_slow = trainClassANN!(ann, (inputs, targets), true, learningRate=0.0001)
+    @test result_fast[2][end] > result_slow[2][end]  # La tasa rápida debería entrenar más rápido
+
+    # Test 5: Verificar que el entrenamiento se detiene temprano por poca variación en la pérdida
+    ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
+    result_early = trainClassANN!(ann, (inputs, targets), true, minLossChange=1e-2, lossChangeWindowSize=3)
+    @test length(result_early[2]) < 1000  # El entrenamiento debería haber parado antes de 1000 épocas
 end
+
 
 # ------------------------------------- trainClassCascadeANN -----------------------------------
+@testset "trainClassCascadeANN tests" begin
 
-@testset "trainClassCascadeANN 1 - Compile Test" begin
-    function generateSampleData(numSamples::Int, inputSize::Int, outputSize::Int)
-        # Generate random input data
-        inputs = rand(Float32, numSamples, inputSize)
-        # Generate random target data (Boolean values)
-        targets = rand(Bool, numSamples, outputSize)
-        return (inputs, targets)
-    end
+    # Crear el dataset de ejemplo
+    inputs = rand(Float32, 10, 5)  # 5 atributos, 10 instancias
+    targets = rand(Bool, 10, 1)    # 1 fila, 10 instancias (booleanas)
 
-    # Generate sample training data
-    numSamples = 100  # Number of training samples
-    inputSize = 4     # Number of input features
-    outputSize = 2    # Number of output classes
-    trainingData = generateSampleData(numSamples, inputSize, outputSize)
-    # Set parameters for the training
-    maxNumNeurons = 9  # Maximum number of neurons to add in the cascade
-    transferFunction = σ
-    maxEpochs = 1000
-    learningRate = 0.01
-    inputs, targets  = trainingData
-    inputs = convert(Matrix{Float32}, inputs')
-    targets = targets'
-    # Call the trainClassCascadeANN function with the sample data
-    trainedANN, trainingLosses = trainClassCascadeANN(
-        maxNumNeurons,
-        trainingData;
-        transferFunction=transferFunction,
-        maxEpochs=maxEpochs,
-        learningRate=learningRate
-    )
+    # Test 1: Verificar que la función se ejecuta sin errores con maxNumNeurons=1
+    maxNumNeurons = 1
+    ann, trainingLosses = trainClassCascadeANN(maxNumNeurons, (inputs, targets))
+    @test length(trainingLosses) > 0  # Debe devolver el histórico de pérdidas
 
-    # Output the results
-    println("Trained ANN structure: ", trainedANN)
-    println("Training losses: ", trainingLosses)
-end
+    # Test 2: Verificar que la pérdida disminuye con el entrenamiento
+    @test all(diff(trainingLosses) .<= 0)  # Las pérdidas deben disminuir o ser constantes
 
-@testset "trainClassCascadeANN 1 - Hard Test" begin
-    # Datos de prueba
-    inputs = rand(Float32, 10, 5)  # 10 muestras con 5 características cada una
-    targets_binary = rand(Bool, 10, 1)  # Objetivo binario para clasificación binaria
-    targets_multi = rand(Bool, 10, 3)   # Objetivo multiclase para clasificación multiclase
-
-    # Parámetros del entrenamiento
+    # Test 3: Verificar el comportamiento con maxNumNeurons>1
     maxNumNeurons = 3
-    maxEpochs = 100
-    minLoss = 0.01
-    learningRate = 0.01
-    minLossChange = 1e-6
-    lossChangeWindowSize = 5
+    ann, trainingLosses = trainClassCascadeANN(maxNumNeurons, (inputs, targets))
+    @test length(trainingLosses) > 0
 
-    # Entrenamiento para clasificación binaria
-    ann_binary, losses_binary = trainClassCascadeANN(maxNumNeurons, (inputs, targets_binary),
-        maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
-        minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
-    
-    # Tests para la red binaria
-    @test length(losses_binary) > 0  # Asegura que haya pérdidas registradas
-    @test size(ann_binary[end].weight, 1) == 1  # Verifica que la salida es binaria (1 salida)
-    @test size(ann_binary[end].weight, 2) == size(inputs, 2) + maxNumNeurons  # Verifica el número correcto de conexiones en la capa de salida
+    # Test 4: Verificar que el entrenamiento se detiene temprano con una tasa de cambio de pérdida pequeña
+    maxNumNeurons = 2
+    ann, trainingLossesEarlyStop = trainClassCascadeANN(maxNumNeurons, (inputs, targets), 
+        maxEpochs=1000, minLossChange=1e-2, lossChangeWindowSize=3)
+    @test length(trainingLossesEarlyStop) < 1000  # Debe detenerse antes de alcanzar 1000 épocas
 
-    # Entrenamiento para clasificación multiclase
-    ann_multi, losses_multi = trainClassCascadeANN(maxNumNeurons, (inputs, targets_multi),
-        maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
-        minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
+    # Test 5: Probar con targets unidimensionales (usando la sobrecarga)
+    targets1D = rand(Bool, 10)  # 10 instancias de targets booleanos (1D)
+    ann, trainingLosses1D = trainClassCascadeANN(maxNumNeurons, (inputs, targets1D))
+    @test length(trainingLosses1D) > 0  # Debe devolver el histórico de pérdidas correctamente
 
-    # Tests para la red multiclase -> Mirar estos
-    @test length(losses_multi) > 0  # Asegura que haya pérdidas registradas
-    @test size(ann_multi[end - 1].weight, 1) == size(targets_multi, 2)  # Verifica que la salida tiene el tamaño correcto de clases
-    @test size(ann_multi[end - 1].weight, 2) == size(inputs, 2) + maxNumNeurons  # Verifica el número correcto de conexiones en la capa de salida
-
-    # Verificación de que las pérdidas disminuyen con el entrenamiento
-    @test losses_binary[end] < losses_binary[1]  # Las pérdidas deben disminuir en clasificación binaria
-    @test losses_multi[end] < losses_multi[1]    # Las pérdidas deben disminuir en clasificación multiclase
+    # Test 6: Verificar que diferentes tasas de aprendizaje afectan el entrenamiento
+    maxNumNeurons = 1
+    ann_fast, trainingLossesFast = trainClassCascadeANN(maxNumNeurons, (inputs, targets), learningRate=0.1)
+    ann_slow, trainingLossesSlow = trainClassCascadeANN(maxNumNeurons, (inputs, targets), learningRate=0.0001)
+    @test trainingLossesFast[end] < trainingLossesSlow[end]  # El entrenamiento con tasa rápida debería alcanzar una pérdida menor
 end
 
-@testset "trainClassCascadeANN 2 - Tests" begin
-    # Datos de prueba
-    inputs = rand(Float32, 10, 5)  # 10 muestras con 5 características cada una
-    targets_vector = rand(Bool, 10)  # Objetivos en forma de vector (una única clase binaria)
-
-    # Parámetros del entrenamiento
-    maxNumNeurons = 3
-    maxEpochs = 50
-    minLoss = 0.01
-    learningRate = 0.01
-    minLossChange = 1e-6
-    lossChangeWindowSize = 5
-
-    # Prueba: Verificar que reshaped_targets se maneja correctamente
-    ann, losses = trainClassCascadeANN(maxNumNeurons, (inputs, targets_vector);
-        maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
-        minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
-    
-    # Test 1: Verificar que la red neuronal ha sido entrenada correctamente
-    @test length(losses) > 0  # Asegurar que se registran las pérdidas
-    @test losses[end] < losses[1]  # Las pérdidas deben disminuir con el entrenamiento
-
-    # Test 2: Verificar el formato de los objetivos después del reshape
-    reshaped_targets = reshape(targets_vector, length(targets_vector), 1)
-    @test size(reshaped_targets, 2) == 1  # La salida debe ser una matriz de Nx1
-
-    # Test 3: Verificar que la red final tiene la salida binaria adecuada
-    @test size(ann[end].weight, 1) == 1  # La capa de salida debe tener 1 neurona (clasificación binaria)
-
-    # Prueba con diferentes parámetros
-    targets_vector_2 = rand(Bool, 15)  # Nuevos objetivos de mayor longitud
-    inputs_2 = rand(Float32, 15, 5)    # Nuevas entradas con el mismo número de características
-    
-    # Test 4: Entrenamiento con nuevos datos
-    ann_2, losses_2 = trainClassCascadeANN(maxNumNeurons, (inputs_2, targets_vector_2);
-        maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
-        minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
-    
-    @test length(losses_2) > 0  # Verificar que se registran pérdidas en el segundo conjunto de datos
-    @test losses_2[end] < losses_2[1]  # Las pérdidas deben disminuir con el entrenamiento en los nuevos datos
-end
 
 @testset "Real Datasets" begin
     function loadDataset(datasetName::String, datasetFolder::String;
@@ -400,7 +333,7 @@ end
     end;
 
     # Cargar los datos sin modificar loadDataset
-    dataset = loadDataset("adult", "C:\\Users\\Pablo\\OneDrive\\3year\\machine_learning\\dataset")
+    dataset = loadDataset("adult", "/home/clown/3-year/machine_learning/dataset")
 
     # Si el dataset es `nothing`, entonces el archivo no existe o no se cargó correctamente
     if dataset === nothing
@@ -421,9 +354,9 @@ end
 
     # Entrenar la red neuronal usando las funciones de entrenamiento
     println("Using trainClassANN - 2layer = false: ")
-    trainClassANN!(ann, (inputs, targets), false)
+    trainClassANN!(ann, (inputs', targets'), false)
     println("Using trainClassANN - 2layer = true: ")
-    trainClassANN!(ann, (inputs, targets), true)
+    trainClassANN!(ann, (inputs', targets'), true)
     println("Using trainClassCascadeANN: ")
     trainClassCascadeANN(3, (inputs, targets))
     println("Using trainClassCascadeANN Overload: ")

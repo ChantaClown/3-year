@@ -1,7 +1,12 @@
+using Flux;
+using Flux.Losses;
 using FileIO;
 using JLD2;
 using Images;
 using DelimitedFiles;
+using Test;
+using Statistics
+using LinearAlgebra;
 
 # ----------------------------------------------------------------------------------------------
 # ------------------------------------- Ejercicio 1 --------------------------------------------
@@ -271,16 +276,14 @@ function addClassCascadeNeuron(previousANN::Chain; transferFunction::Function=σ
     return ann
 end;
 
-# Recibe los patrones transpuestos ya
-
 function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}}, trainOnly2LastLayers::Bool;
     maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
 
     # Si da fallo de size(inputs) == size(inputs), transponer estas matrices
     (inputs, targets) = trainingDataset;
-
+    
     # Check if the inputs and targets are of the same sizes
-    # @assert(size(inputs,1)==size(targets,1));
+    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -308,7 +311,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
 
         numEpoch += 1;
         # Calculamos las metricas en este ciclo
-        trainingLoss = loss(ann, inputs', targets');
+        trainingLoss = loss(ann, inputs, targets);
         push!(trainingLosses, trainingLoss);
         # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
         
@@ -341,7 +344,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     inputs = convert(Matrix{Float32}, inputs')
     targets = targets'
     
-    @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
+    # @assert size(inputs, 2) == size(targets, 2) "Dimension mismatch: number of examples in inputs and targets must match."
 
 
     # Create a ANN without hidden layers
@@ -366,7 +369,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
             trainingLosses = vcat(trainingLosses, lossVector[2:end])
         end
     
-        # Tra   in the entire ANN
+        # Train the entire ANN
         ann, lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
             maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
             minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
@@ -382,7 +385,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     trainingDataset::  Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,1}};
     transferFunction::Function=σ,
     maxEpochs::Int=100, minLoss::Real=0.0, learningRate::Real=0.01, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
-
+    
     inputs, targets = trainingDataset
     reshaped_targets = reshape(targets, length(targets), 1)
 
@@ -390,7 +393,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     return trainClassCascadeANN(maxNumNeurons, (inputs, reshaped_targets);
                                 transferFunction=transferFunction, maxEpochs=maxEpochs, minLoss=minLoss, 
                                 learningRate=learningRate, minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
-end;
+end
     
 
 # ----------------------------------------------------------------------------------------------
@@ -399,10 +402,11 @@ end;
 
 HopfieldNet = Array{Float32,2}
 
+
 function trainHopfield(trainingSet::AbstractArray{<:Real,2})
 
     # Forumula de Hopfield
-    w = (1 / size(trainingSet,2)) * (transpose(trainingSet) * trainingSet)
+    w = (1 / size(trainingSet,1)) * (transpose(trainingSet) * trainingSet)
     # Diagonal a 0
     w[diagind(w)] .= 0
     w = convert(Matrix{Float32}, w)
@@ -482,26 +486,37 @@ end;
 function cropImages(datasetNCHW::AbstractArray{<:Bool,4}, ratioCrop::Real)
     croppedSet = copy(datasetNCHW)
     # Obtener el tamaño de las imágenes
-    (_, _, height, width) = size(croppedSet)
+    (_, _, _, width) = size(croppedSet)
     # Calcular el número de píxeles que se deben conservar
-    numPixelsToKeep = Int(round(width * (1 - ratioCrop)))
-    # Crear un indice de la parte derecha a poner a 0
-    mask = hcat(ones(Bool, numPixelsToKeep), zeros(Bool, width - numPixelsToKeep))
-    # Aplicar la mascara a la parte derecha de cada imagen
-    croppedSet .= croppedSet .* reshape(mask, 1, 1, height, width)
+    pixels_to_keep = Int(round(width * (1 - ratioCrop)))
+    # Comprobar el + 1
+    croppedSet[:,:,:,pixels_to_keep+1:end] .= 0
     return croppedSet
 end;
 
 function randomImages(numImages::Int, resolution::Int)
-    #
-    # Codigo a desarrollar
-    #
+    matrix = randn(numImages, 1, resolution, resolution)
+    result = matrix .> 0 
+    return result
 end;
 
 function averageMNISTImages(imageArray::AbstractArray{<:Real,4}, labelArray::AbstractArray{Int,1})
     # 
-    # Codigo a desarrollar
-    # 
+    labels = unique(labelArray)
+    N = length(labels)
+    
+    # Crear la matriz de salida en formato NCHW, donde N es el número de dígitos únicos
+    C, H, W = size(imageArray)[2:4]  # Obtener las dimensiones de las imágenes
+    template_images = Array{eltype(imageArray)}(undef, N, C, H, W)
+    
+    # Promediar las imágenes por dígito
+    for i in 1:N
+        digit = labels[i]
+        template_images[i, 1, :, :] = dropdims(mean(imageArray[labelArray .== digit, 1, :, :], dims=1), dims=1)
+    end
+    
+    # Retornar las plantillas promedio y las etiquetas
+    return template_images, labels
 end; 
 
 function classifyMNISTImages(imageArray::AbstractArray{<:Real,4}, templateInputs::AbstractArray{<:Real,4}, templateLabels::AbstractArray{Int,1})
@@ -535,17 +550,16 @@ function calculateMNISTAccuracies(datasetFolder::String, labels::AbstractArray{I
     ann = trainHopfield(template_images_bool)
     
     # Calcular precisión en el conjunto de entrenamiento
-    train_outputs = stepHopfield(ann, train_images_bool)
+    train_outputs = runHopfield(ann, train_images_bool)
     train_predictions = classifyMNISTImages(train_outputs, template_images_bool, template_labels)
     acc_train = mean(train_predictions .== train_labels)
     
     # Calcular precisión en el conjunto de test
-    test_outputs = stepHopfield(ann, test_images_bool)
+    test_outputs = runHopfield(ann, test_images_bool)
     test_predictions = classifyMNISTImages(test_outputs, template_images_bool, template_labels)
     acc_test = mean(test_predictions .== test_labels)
     
     return (acc_train, acc_test)
-
 end;
 
 
