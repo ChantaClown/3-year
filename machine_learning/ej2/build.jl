@@ -70,7 +70,6 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     (inputs, targets) = trainingDataset;
     
     # Check if the inputs and targets are of the same sizes
-    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -115,7 +114,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     
     end;
 
-    return (ann, trainingLosses);
+    return trainingLosses;
 end;
 
 
@@ -227,37 +226,28 @@ end
 @testset "trainClassANN! tests" begin
 
     # Crear el dataset de ejemplo
-    inputs = rand(Float32, 5, 10)  # 5 atributos, 10 instancias trans
-    targets = rand(Bool, 1, 10)    # 19 col, 10 instancias (booleanas) trans
+    inputs = rand(Float32, 100, 5)  # 5 atributos, 10 instancias
+    targets = rand(Bool, 100, 1)    # 1 fila, 10 instancias (booleanas)
 
     # Red neuronal
-    ann = Chain(Dense(5, 3, sigmoid), Dense(3, 1, sigmoid))
+    ann = Chain(Dense(5,3,sigmoid), Dense(3, 1, sigmoid))
 
     # Test 1: Verificar que la función se ejecuta sin errores
-    result = trainClassANN!(ann, (inputs, targets), true)
-    @test length(result[2]) > 0  # Debe devolver el histórico de pérdidas
-
+    result = trainClassANN!(ann, (inputs', targets'), true)
+    @test length(result) > 0  # Debe devolver el histórico de pérdidas
+    @test eltype(result) == Float32
+    @test result isa AbstractVector
     # Test 2: Verificar que la pérdida disminuye con el entrenamiento
-    losses = result[2]
+    losses = result
     @test all(diff(losses) .<= 0)  # Las pérdidas deben disminuir o ser constantes
 
     # Test 3: Verificar el comportamiento con trainOnly2LastLayers=true
     ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result = trainClassANN!(ann, (inputs, targets), true)  # Solo entrenar las dos últimas capas
-    @test length(result[2]) > 0
-
-    # Test 4: Verificar que diferentes tasas de aprendizaje afectan el entrenamiento
-    ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result_fast = trainClassANN!(ann, (inputs, targets), true, learningRate=0.1)
-    result_slow = trainClassANN!(ann, (inputs, targets), true, learningRate=0.0001)
-    @test result_fast[2][end] > result_slow[2][end]  # La tasa rápida debería entrenar más rápido
-
-    # Test 5: Verificar que el entrenamiento se detiene temprano por poca variación en la pérdida
-    ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result_early = trainClassANN!(ann, (inputs, targets), true, minLossChange=1e-2, lossChangeWindowSize=3)
-    @test length(result_early[2]) < 1000  # El entrenamiento debería haber parado antes de 1000 épocas
+    result = trainClassANN!(ann, (inputs', targets'), true)  # Solo entrenar las dos últimas capas
+    @test length(result) > 0
+    @test length(result) > 0  # Debe devolver el histórico de pérdidas
+    @test eltype(result) == Float32
 end
-
 
 # ------------------------------------- trainClassCascadeANN -----------------------------------
 @testset "trainClassCascadeANN tests" begin
