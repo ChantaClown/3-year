@@ -276,6 +276,7 @@ function addClassCascadeNeuron(previousANN::Chain; transferFunction::Function=σ
     return ann
 end;
 
+
 function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}}, trainOnly2LastLayers::Bool;
     maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
 
@@ -283,7 +284,6 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     (inputs, targets) = trainingDataset;
     
     # Check if the inputs and targets are of the same sizes
-    # @assert(size(inputs,2)==size(targets,2));
 
     # Loss function
     loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
@@ -328,7 +328,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     
     end;
 
-    return (ann, trainingLosses);
+    return trainingLosses;
 end;
 
 
@@ -351,7 +351,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     ann = newClassCascadeNetwork(size(inputs,1),size(targets,1))
 
     # Train the first ANN
-    ann, trainingLosses = trainClassANN!(ann, (inputs, targets), false,
+    trainingLosses = trainClassANN!(ann, (inputs, targets), false,
         maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
         minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 
@@ -362,7 +362,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
 
         if neuronIdx > 1
             # Train freezing all layers except the last two
-            ann, lossVector = trainClassANN!(ann, (inputs, targets), true,
+            lossVector = trainClassANN!(ann, (inputs, targets), true,
                 maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
                 minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
             # Concatenate loss vectors, skipping the first value
@@ -370,7 +370,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
         end
     
         # Train the entire ANN
-        ann, lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
+        lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
             maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
             minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
         # Concatenate loss vectors, skipping the first value
