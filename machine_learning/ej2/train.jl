@@ -16,13 +16,70 @@ indexOutputLayer(ann::Chain) = length(ann) - (ann[end]==softmax);
 # ------------------------------------- Test ---------------------------------------------------
 # ----------------------------------------------------------------------------------------------
 
+function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}}, trainOnly2LastLayers::Bool;
+    maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
+
+    # Si da fallo de size(inputs) == size(inputs), transponer estas matrices
+    (inputs, targets) = trainingDataset;
+    
+    # Check if the inputs and targets are of the same sizes
+
+    # Loss function
+    loss(model,x,y) = (size(y,1) == 1) ? Losses.binarycrossentropy(model(x),y) : Losses.crossentropy(model(x),y);
+
+    trainingLosses = Float32[];
+    numEpoch = 0;
+
+    # Get the loss for the cycle 0 (no training yet)
+    trainingLoss = loss(ann, inputs, targets);
+    push!(trainingLosses, trainingLoss);
+    # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
+
+    opt_state = Flux.setup(Adam(learningRate), ann);
+
+    if trainOnly2LastLayers
+        # Freeze all the layers except the last 2
+        Flux.freeze!(opt_state.layers[1:(indexOutputLayer(ann)-2)]); 
+    end
+
+    # Train until a stop condition is reached
+    while (numEpoch < maxEpochs) && (trainingLoss > minLoss) 
+
+        numEpoch += 1;
+
+        # Train cycle (0 if its the first one)
+        Flux.train!(loss, ann, [(inputs, targets)], opt_state);
+
+        # Calculamos las metricas en este ciclo
+        trainingLoss = loss(ann, inputs, targets);
+        push!(trainingLosses, trainingLoss);
+        # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
+        
+        # Calculate loss in the window for early stopping
+        if numEpoch > lossChangeWindowSize
+            lossWindow = trainingLosses[end - lossChangeWindowSize + 1: end];
+            minLossValue, maxLossValue = extrema(lossWindow);
+
+            if ((maxLossValue - minLossValue) / minLossValue) <= minLossChange
+                println("Stopping early at epoch $numEpoch due to minimal change in loss.");
+                break;
+            end
+        end
+    
+    end;
+
+    return trainingLosses;
+end;
+
 # ------------------------------------- trainClassANN! -----------------------------------
 
+using Flux
+using Test
 
 @testset "trainClassANN!" begin
     # Crear el dataset de ejemplo
-    inputs = rand(Float32, 5, 10)  # 5 atributos, 10 instancias trans
-    targets = rand(Bool, 1, 10)    # 19 col, 10 instancias (booleanas) trans
+    inputs = rand(Float32, 5, 10)  # 5 atributos, 10 instancias (transpuestas)
+    targets = rand(Bool, 1, 10)    # 1 salida booleana, 10 instancias (transpuestas)
 
     # Red neuronal
     ann = Chain(Dense(5, 3, sigmoid), Dense(3, 1, sigmoid))
@@ -30,27 +87,33 @@ indexOutputLayer(ann::Chain) = length(ann) - (ann[end]==softmax);
     # Test 1: Verificar que la función se ejecuta sin errores
     result = trainClassANN!(ann, (inputs, targets), false, maxEpochs=50)
     @test length(result) > 0  # Debe devolver el histórico de pérdidas
-    @test length(result) == 51
+    @test length(result) == 51  # 50 épocas + la pérdida inicial (época 0)
+
     # Test 2: Verificar que la pérdida disminuye con el entrenamiento
     losses = result
     @test all(diff(losses) .<= 0)  # Las pérdidas deben disminuir o ser constantes
 
     # Test 3: Verificar el comportamiento con trainOnly2LastLayers=true
     ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result = trainClassANN!(ann, (inputs, targets), true)  # Solo entrenar las dos últimas capas
-    @test length(result) > 0
+    result = trainClassANN!(ann, (inputs, targets), true, maxEpochs=50)  # Solo entrenar las dos últimas capas
+    @test length(result) > 0  # Asegurarse que devuelve un resultado
+    @test length(result) == 51  # 50 épocas + la pérdida inicial (época 0)
 
     # Test 4: Verificar que diferentes tasas de aprendizaje afectan el entrenamiento
-    ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result_fast = trainClassANN!(ann, (inputs, targets), true, learningRate=0.1)
-    result_slow = trainClassANN!(ann, (inputs, targets), true, learningRate=0.0001)
-    @test result_fast[end] > result_slow[end]  # La tasa rápida debería entrenar más rápido
+    ann_fast = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
+    ann_slow = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
+
+    result_fast = trainClassANN!(ann_fast, (inputs, targets), true, learningRate=0.1, maxEpochs=50)
+    result_slow = trainClassANN!(ann_slow, (inputs, targets), true, learningRate=0.0001, maxEpochs=50)
+
+    @test result_fast[end] < result_slow[end]  # La tasa rápida debería reducir más la pérdida en el mismo número de épocas
 
     # Test 5: Verificar que el entrenamiento se detiene temprano por poca variación en la pérdida
     ann = Chain(Dense(5, 3, relu), Dense(3, 1, sigmoid))  # Nueva red
-    result_early = trainClassANN!(ann, (inputs, targets), true, minLossChange=1e-2, lossChangeWindowSize=3)
-    @test length(result_early) < 1000  # El entrenamiento debería haber parado antes de 1000 épocas
+    result_early = trainClassANN!(ann, (inputs, targets), true, minLossChange=1e-2, lossChangeWindowSize=3, maxEpochs=1000)
+    @test length(result_early) < 1000  # El entrenamiento debería haber parado antes de 1000 épocas debido al estancamiento del loss
 end
+
 
 
 # ------------------------------------- trainClassCascadeANN -----------------------------------

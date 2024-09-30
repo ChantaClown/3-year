@@ -304,20 +304,21 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
     end
 
     # Train until a stop condition is reached
-    while (numEpoch<maxEpochs) && (trainingLoss>minLoss) 
+    while (numEpoch < maxEpochs) && (trainingLoss > minLoss) 
+
+        numEpoch += 1;
 
         # Train cycle (0 if its the first one)
         Flux.train!(loss, ann, [(inputs, targets)], opt_state);
 
-        numEpoch += 1;
         # Calculamos las metricas en este ciclo
         trainingLoss = loss(ann, inputs, targets);
         push!(trainingLosses, trainingLoss);
         # println("Epoch ", numEpoch, ": loss: ", trainingLoss);
         
         # Calculate loss in the window for early stopping
-        if numEpoch >= lossChangeWindowSize
-            lossWindow = trainingLosses[end-lossChangeWindowSize+1:end];
+        if numEpoch > lossChangeWindowSize
+            lossWindow = trainingLosses[end - lossChangeWindowSize + 1: end];
             minLossValue, maxLossValue = extrema(lossWindow);
 
             if ((maxLossValue - minLossValue) / minLossValue) <= minLossChange
@@ -330,6 +331,7 @@ function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,
 
     return trainingLosses;
 end;
+
 
 
 function trainClassCascadeANN(maxNumNeurons::Int,
