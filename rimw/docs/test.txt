@@ -1,0 +1,1 @@
+clown@circus:~/3-year$ mvn exec:java -Dexec.mainClass="simpledemo.IndexFiles" -Dexec.args="-index /home/clown/index -docs /home/clown/docs"
