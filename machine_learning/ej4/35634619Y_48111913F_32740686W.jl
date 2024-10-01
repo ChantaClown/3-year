@@ -276,7 +276,6 @@ function addClassCascadeNeuron(previousANN::Chain; transferFunction::Function=σ
     return ann
 end;
 
-
 function trainClassANN!(ann::Chain, trainingDataset::Tuple{AbstractArray{<:Real,2}, AbstractArray{Bool,2}}, trainOnly2LastLayers::Bool;
     maxEpochs::Int=1000, minLoss::Real=0.0, learningRate::Real=0.001, minLossChange::Real=1e-7, lossChangeWindowSize::Int=5)
 
@@ -396,6 +395,8 @@ function trainClassCascadeANN(maxNumNeurons::Int,
                                 transferFunction=transferFunction, maxEpochs=maxEpochs, minLoss=minLoss, 
                                 learningRate=learningRate, minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 end
+    
+
     
 
 # ----------------------------------------------------------------------------------------------

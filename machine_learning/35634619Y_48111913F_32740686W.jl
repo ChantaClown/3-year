@@ -352,7 +352,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
     ann = newClassCascadeNetwork(size(inputs,1),size(targets,1))
 
     # Train the first ANN
-    ann, trainingLosses = trainClassANN!(ann, (inputs, targets), false,
+    trainingLosses = trainClassANN!(ann, (inputs, targets), false,
         maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
         minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 
@@ -363,7 +363,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
 
         if neuronIdx > 1
             # Train freezing all layers except the last two
-            ann, lossVector = trainClassANN!(ann, (inputs, targets), true,
+            lossVector = trainClassANN!(ann, (inputs, targets), true,
                 maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
                 minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
             # Concatenate loss vectors, skipping the first value
@@ -371,7 +371,7 @@ function trainClassCascadeANN(maxNumNeurons::Int,
         end
     
         # Train the entire ANN
-        ann, lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
+        lossVectorFull = trainClassANN!(ann, (inputs, targets), false,
             maxEpochs=maxEpochs, minLoss=minLoss, learningRate=learningRate,
             minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
         # Concatenate loss vectors, skipping the first value
@@ -395,6 +395,8 @@ function trainClassCascadeANN(maxNumNeurons::Int,
                                 transferFunction=transferFunction, maxEpochs=maxEpochs, minLoss=minLoss, 
                                 learningRate=learningRate, minLossChange=minLossChange, lossChangeWindowSize=lossChangeWindowSize)
 end
+    
+
     
 
 # ----------------------------------------------------------------------------------------------
