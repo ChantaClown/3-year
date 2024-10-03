@@ -578,23 +578,27 @@ using ScikitLearn: @sk_import, fit!, predict
 
 Batch = Tuple{AbstractArray{<:Real,2}, AbstractArray{<:Any,1}}
 
+function batchInputs(batch::Batch) 
+    inputs = batch[1]
 
-function batchInputs(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+    return inputs
 end;
 
-function batchTargets(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+
+function batchTargets(batch::Batch) 
+    targets = batch[2]
+    return targets
 end;
 
-function batchLength(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+
+function batchLength(batch::Batch) 
+    inputs = batchInputs(batch)
+    lenghtInputs = size(inputs, 1)
+
+    targets = batchTargets(batch)
+    lenghtTargets = lenght(targets)
+
+    return lenghtInputs == lenghtTargets ? lenghtInputs : error("Las salidas y entradas no coiciden en tamaño")
 end;
 
 function selectInstances(batch::Batch, indices::Any)
