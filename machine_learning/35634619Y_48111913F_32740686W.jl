@@ -578,59 +578,132 @@ using ScikitLearn: @sk_import, fit!, predict
 
 Batch = Tuple{AbstractArray{<:Real,2}, AbstractArray{<:Any,1}}
 
+function batchInputs(batch::Batch) 
+    inputs = batch[1]
 
-function batchInputs(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+    return inputs
 end;
 
-function batchTargets(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+
+function batchTargets(batch::Batch) 
+    targets = batch[2]
+    return targets
 end;
 
-function batchLength(batch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+
+function batchLength(batch::Batch) 
+    inputs = batchInputs(batch)
+    lenghtInputs = size(inputs, 1)
+
+    targets = batchTargets(batch)
+    lenghtTargets = length(targets)
+                
+    return lenghtInputs == lenghtTargets ? lenghtInputs : error("Las salidas y entradas no coiciden en tamaño")
 end;
 
-function selectInstances(batch::Batch, indices::Any)
-    #
-    # Codigo a desarrollar
-    #
-end;
+function selectInstances(batch::Batch, indices::Any) 
+    # Extraer entradas y salidas del batch
+    inputs = batchInputs(batch)
+    targets = batchTargets(batch)
+
+    # Seleccionar las instancias correspondientes
+    selected_inputs = inputs[indices, :]
+    selected_targets = targets[indices]
+
+    # Devolver un nuevo batch con las instancias seleccionadas
+    return (selected_inputs, selected_targets)
+end
+
 
 function joinBatches(batch1::Batch, batch2::Batch)
-    #
-    # Codigo a desarrollar
-    #
+    new_inputs = vcat(batchInputs(batch1), batchInputs(batch2))
+    new_targets = vcat(batchTargets(batch1), batchTargets(batch2))
+    return (new_inputs, new_targets)
 end;
 
 
 function divideBatches(dataset::Batch, batchSize::Int; shuffleRows::Bool=false)
-    #
-    # Codigo a desarrollar
-    #
+    inputs = batchInputs(dataset)
+    targets = batchTargets(dataset)
+    rows = size(inputs, 1)
+    
+    # Si shuffleRows es verdadero, desordenamos las filas
+    if shuffleRows
+        indices = shuffle(1:rows)
+        inputs = inputs[indices, :]
+        targets = targets[indices]
+    end
+
+    # Dividir el conjunto de datos en particiones (lotes)
+    #=
+    * partition(1:size(inputs, 1), batchSize)] -> devuelve un batch de tamaño x con los indices de cada fila
+    * partition(1:10, 3)
+    * Primer lote: [1, 2, 3]
+    * Segundo lote: [4, 5, 6]
+    * Tercer lote: [7, 8, 9]
+    =#
+    batches = [selectInstances((inputs, targets), collect(batch)) for batch in partition(1:rows, batchSize)]
+
+    remaining = rows % batchSize
+    if remaining > 0
+        last_batch_indices = (rows - remaining + 1):rows
+        push!(batches, selectInstances(dataset, collect(last_batch_indices)))
+    end
+    
+    return batches
 end;
 
 function trainSVM(dataset::Batch, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.,
     supportVectors::Batch=( Array{eltype(dataset[1]),2}(undef,0,size(dataset[1],2)) , Array{eltype(dataset[2]),1}(undef,0) ) )
-    #
-    # Codigo a desarrollar
-    #
+
+    # Concatenar los vectores de soporte con el dataset original si se han pasado
+    trainingData = isnothing(supportVectors) ? dataset : joinBatches(supportVectors, dataset)
+
+    inputs = batchInputs(trainingData)
+    targets = batchTargets(trainingData)
+
+    # Entrenar el modelo
+    model = SVC(kernel=kernel, C=C, gamma=gamma, coef0=coef0, degree=degree, random_state=1)
+    fit!(model, inputs, targets)
+
+    indicesNewSupportVectors = sort(model.support_.+1); 
+
+    # Número de vectores de soporte previos
+    numOldSupportVectors = isnothing(supportVectors) ? 0 : batchLength(supportVectors)
+
+    # Separar los índices en: vectores de soporte antiguos y los nuevos
+    oldSupportIndices = indicesNewSupportVectors[indicesNewSupportVectors .<= numOldSupportVectors]
+    newSupportIndices = indicesNewSupportVectors[indicesNewSupportVectors .> numOldSupportVectors] .- numOldSupportVectors
+    
+    # Crear los lotes de vectores de soporte
+    oldSupportVectorsBatch = isnothing(supportVectors) ? nothing : selectInstances(supportVectors, oldSupportIndices)
+    newSupportVectorsBatch = selectInstances(dataset, newSupportIndices)
+    
+    # Concatenar los lotes de vectores de soporte
+    finalSupportVectorsBatch = isnothing(oldSupportVectorsBatch) ? newSupportVectorsBatch : joinBatches(oldSupportVectorsBatch, newSupportVectorsBatch)
+    
+    # Devolver el modelo, los vectores de soporte y el tuple con los índices
+    return model, finalSupportVectorsBatch, (oldSupportIndices, newSupportIndices)
 end;
 
 function trainSVM(batches::AbstractArray{<:Batch,1}, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
-    #
-    # Codigo a desarrollar
-    #
-end;
+    
+    supportVectors = nothing
 
+    for batch in batches
+        if isnothing(supportVectors)
+            # Si no hay vectores de soporte aún, entrenar el modelo sin ellos
+            model, supportVectors, _ = trainSVM(batch, kernel, C; degree=degree, gamma=gamma, coef0=coef0)
+        else
+            # Si ya hay vectores de soporte, usarlos en el entrenamiento
+            model, supportVectors, _ = trainSVM(batch, kernel, C; degree=degree, gamma=gamma, coef0=coef0, supportVectors=supportVectors)
+        end
+    end
+
+    return model
+end;
 
 
 
