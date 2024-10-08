@@ -72,14 +72,20 @@ function divideBatches(dataset::Batch, batchSize::Int; shuffleRows::Bool=false)
     * Segundo lote: [4, 5, 6]
     * Tercer lote: [7, 8, 9]
     =#
-    batches = [selectInstances((inputs, targets), collect(batch)) for batch in partition(1:rows, batchSize)]
-
+    # Usar partition para dividir el conjunto de datos en lotes de tamaño batchSize
+    partitions = partition(1:rows, batchSize)
+    
+    # Crear los lotes
+    batches = [selectInstances((inputs, targets), collect(p)) for p in partitions]
+    
+    # Manejar el último lote si no es divisible por batchSize
     remaining = rows % batchSize
     if remaining > 0
+        # Selecionamos la ultima instancia 
         last_batch_indices = (rows - remaining + 1):rows
-        push!(batches, selectInstances(dataset, collect(last_batch_indices)))
+        push!(batches, selectInstances((inputs, targets), collect(last_batch_indices)))
     end
-    
+
     return batches
 end;
 
@@ -121,7 +127,7 @@ function trainSVM(batches::AbstractArray{<:Batch,1}, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
     
     supportVectors = nothing
-
+    model = nothing
     for batch in batches
         if isnothing(supportVectors)
             # Si no hay vectores de soporte aún, entrenar el modelo sin ellos
@@ -269,8 +275,8 @@ end
     combined_targets_shuffled = vcat([batchTargets(batch) for batch in batches_shuffled]...)
     @test combined_inputs_shuffled != inputs  # Verificar que están desordenadas
     @test combined_targets_shuffled != targets
-
 end
+
 
 @testset "trainSVM" begin
     # Caso 1: Entrenamiento básico de un SVM sin vectores de soporte previos
