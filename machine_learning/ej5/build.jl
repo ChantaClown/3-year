@@ -1,4 +1,4 @@
-include("35634619Y_48111913F_32740686W.jl");
+include("main.jl");
 using Test
 using Random
 
@@ -124,18 +124,13 @@ function euclideanDistances(memory::Batch, instance::AbstractArray{<:Real,1})
     return distancias_vector
 end;
 
-function predictKNN(memory::Batch, instance::AbstractArray{<:Real,1}, k::Int)
-    _ , memoryOutputs = memory
-    distance = euclideanDistances(memory, instance)
-
-    # Obtener los índices de los k vecinos más cercanos
-    indices_vecinos = partialsortperm(distance, k)
-    salidas_vecinos = memoryOutputs[indices_vecinos]
-
-    # Calcular el valor de predicción utilizando la moda
+function predictKNN(memory::Batch, instance::AbstractArray{<:Real,1}, k::Int) 
+    distance = euclideanDistances(memory,instance)
+    indices_vecinos = partialsortperm(distance, 1:k) 
+    salidas_vecinos = memory[2][indices_vecinos]
     valor_prediccion = mode(salidas_vecinos)
+    return valor_prediccion 
 
-    return convert(eltype(memoryOutputs), valor_prediccion)
 end;
 
 function predictKNN(memory::Batch, instances::AbstractArray{<:Real,2}, k::Int)
@@ -145,9 +140,25 @@ function predictKNN(memory::Batch, instances::AbstractArray{<:Real,2}, k::Int)
 end;
 
 function streamLearning_KNN(datasetFolder::String, windowSize::Int, batchSize::Int, k::Int)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Inicializar memoria y batches
+    memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
+
+    num_batches = length(batches)
+    accuracies = Vector{Float32}(undef, num_batches)
+
+    for idx in 1:num_batches
+        # Test del modelo actual
+        X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
+        y_pred = predictKNN(memory, X_batch, k)
+        accuracies[idx] = mean(y_pred .== y_batch)
+
+        # Actualizar memoria con i-esimo batch
+        addBatch!(memory, batches[idx])
+    end
+
+    @assert length(accuracies) == length(batches)
+    return accuracies
 end;
 
 
@@ -318,4 +329,23 @@ end
     @test length(predicciones) == size(instances, 1)
     @test all(typeof(pred) == typeof(memory[2][1]) for pred in predicciones)
     @test all(pred in unique(memory[2]) for pred in predicciones)
+end
+
+@testset "streamLearning_KNN tests" begin
+
+    datasetFolder = "machine_learning/test/"
+    windowSize = 5
+    batchSize = 5
+    k = 3
+
+    # Test para verificar que la longitud del vector de precisiones es correcta
+    accuracies = streamLearning_KNN(datasetFolder, windowSize, batchSize, k)
+    expected_length = (1000 - windowSize) ÷ batchSize # Asumiendo que 20 es el tamaño del dataset reducido de prueba
+    @test length(accuracies) == expected_length
+
+    # Test para verificar que las precisiones están en el rango [0.0, 1.0]
+    @test all(0.0 <= acc <= 1.0 for acc in accuracies)
+
+    # Test para verificar que las precisiones son de tipo Float32
+    @test all(typeof(acc) == Float32 for acc in accuracies)
 end

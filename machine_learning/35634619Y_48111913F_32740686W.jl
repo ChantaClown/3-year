@@ -7,6 +7,8 @@ using DelimitedFiles;
 using Test;
 using Statistics
 using LinearAlgebra;
+using Base.Iterators
+using StatsBase;
 
 # ----------------------------------------------------------------------------------------------
 # ------------------------------------- Ejercicio 1 --------------------------------------------
@@ -621,7 +623,6 @@ function joinBatches(batch1::Batch, batch2::Batch)
     return (new_inputs, new_targets)
 end;
 
-
 function divideBatches(dataset::Batch, batchSize::Int; shuffleRows::Bool=false)
     inputs = batchInputs(dataset)
     targets = batchTargets(dataset)
@@ -642,13 +643,20 @@ function divideBatches(dataset::Batch, batchSize::Int; shuffleRows::Bool=false)
     * Segundo lote: [4, 5, 6]
     * Tercer lote: [7, 8, 9]
     =#
-    batches = [selectInstances((inputs, targets), collect(batch)) for batch in partition(1:rows, batchSize)]
-
+    # Usar partition para dividir el conjunto de datos en lotes de tamaño batchSize
+    partitions = partition(1:rows, batchSize)
+    
+    # Crear los lotes
+    batches = [selectInstances((inputs, targets), collect(p)) for p in partitions]
+    
+    #= Manejar el último lote si no es divisible por batchSize
     remaining = rows % batchSize
     if remaining > 0
+        # Selecionamos la ultima instancia 
         last_batch_indices = (rows - remaining + 1):rows
-        push!(batches, selectInstances(dataset, collect(last_batch_indices)))
+        push!(batches, selectInstances((inputs, targets), collect(last_batch_indices)))
     end
+    =#
     
     return batches
 end;
@@ -687,11 +695,12 @@ function trainSVM(dataset::Batch, kernel::String, C::Real;
     return model, finalSupportVectorsBatch, (oldSupportIndices, newSupportIndices)
 end;
 
+
 function trainSVM(batches::AbstractArray{<:Batch,1}, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
     
     supportVectors = nothing
-
+    model = nothing
     for batch in batches
         if isnothing(supportVectors)
             # Si no hay vectores de soporte aún, entrenar el modelo sin ellos
@@ -712,31 +721,110 @@ end;
 # ------------------------------------- Ejercicio 5 --------------------------------------------
 # ----------------------------------------------------------------------------------------------
 
-
 function initializeStreamLearningData(datasetFolder::String, windowSize::Int, batchSize::Int)
-    #
-    # Codigo a desarrollar
-    #
+
+    fullData = loadStreamLearningDataset(datasetFolder)
+    # Crear la memoria inicial
+    memory = selectInstances(fullData, 1:windowSize)
+    # Dividir el resto de los datos en batches con tamaño batchSize, sin desordenar (shuffleRows=false)
+    remainingData = selectInstances(fullData, (windowSize+1):size(fullData[1], 1))
+    batches = divideBatches(remainingData, batchSize; shuffleRows=false)
+    
+    return memory, batches
 end;
 
+#=
+ = SI FALLA USAR EL BROADCAST AL FINAL
+ =#
 function addBatch!(memory::Batch, newBatch::Batch)
-    #
-    # Codigo a desarrollar
-    #
+  
+    # Desempaquetar la memoria actual y el nuevo lote de datos
+    memoryInputs, memoryOutputs = memory
+    newInputs, newOutputs = newBatch
+    # Número de instancias del nuevo lote
+    batchSize = size(newInputs, 1)
+    # Desplazar la memoria hacia adelante, eliminando los datos más antiguos
+    memoryInputs[:, 1:end-batchSize] = memoryInputs[:, batchSize+1:end]
+    memoryOutputs[1:end-batchSize] = memoryOutputs[batchSize+1:end]
+    
+    # Añadir los nuevos datos al final de la memoria
+    memoryInputs[:, end-batchSize+1:end] = newInputs[:, 1:batchSize]
+    memoryOutputs[end-batchSize+1:end] = newOutputs[1:batchSize]
 end;
 
 function streamLearning_SVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Inicializar memoria y batches
+    memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
+    # Primer SVM
+    model, supportVectors, _ = trainSVM(memory, kernel, C; degree, gamma, coef0)
+
+    num_batches = length(batches)
+    accuracies = Vector{Float32}(undef, num_batches)
+
+    for idx in 1:num_batches
+        # Test del modelo actual
+        X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
+        y_pred = predict(model, X_batch)
+        accuracies[idx] = mean(y_pred .== y_batch)
+        # Actualizar memoria con i-esimo batch
+        addBatch!(memory, batches[idx])
+        # Entrenar de nuevo el modelo usando los vectores de soporte
+        model, supportVectors, _ = trainSVM(memory, kernel, C; degree, gamma, coef0, supportVectors=supportVectors)
+    end
+
+    @assert length(accuracies) == length(batches)
+    return accuracies
 end;
 
 function streamLearning_ISVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
-    #
-    # Codigo a desarrollar
-    #
+
+    # Inicializar memoria y batches
+    memory, batches = initializeStreamLearningData(datasetFolder, batchSize, batchSize)
+    # Primer SVM
+    model, supportVectors, indicesSupportVectorsInFirstBatch = trainSVM(memory, kernel, C; degree, gamma, coef0)
+
+    num_batches = length(batches)
+    # batchSize = el  más  antiguo,  1  = el  más  reciente.
+    age_vector = collect(batchSize:-1:1)
+    vectorAge = age_vector[indicesSupportVectorsInFirstBatch[2]]
+    accuracies = Vector{Float32}(undef, num_batches)
+
+    for idx in 2:num_batches
+        # Test del modelo actual
+        X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
+        y_pred = predict(model, X_batch)
+        accuracies[idx] = mean(y_pred .== y_batch)
+
+        # Actualizar la edad de los vectores
+        vectorAge .+= batchSize
+        indices = findall(x -> x <= windowSize, vectorAge)
+        supportVectors = selectInstances(supportVectors, indices)
+        vectorAge = vectorAge[indices]
+        
+        
+        # Entrenar de nuevo el modelo usando los vectores de soporte
+        model, supportVectors, (indicesSupportVectorsOld, indicesSupportVectorsBatch) = trainSVM(
+            batches[idx], kernel, C; degree=degree, gamma=gamma, coef0=coef0, supportVectors=supportVectors)
+            
+        # Crear nuevo lote de datos con los nuevos vectores de soporte
+        newSupportVectorsOld = selectInstances(supportVectors, indicesSupportVectorsOld)
+        newSupportVectorsBatch = selectInstances(batches[idx], indicesSupportVectorsBatch)
+        supportVectors = joinBatches(newSupportVectorsOld, newSupportVectorsBatch)
+        
+        # Actualizar vector de edades de los nuevos vectores de soporte
+        vectorAgeOld = vectorAge[indicesSupportVectorsOld]
+        vectorAgeBatch = batchSize .- indicesSupportVectorsBatch .+ 1
+        vectorAge = vcat(vectorAgeOld, vectorAgeBatch)
+    end
+
+    # COMO TRATAR CON EL SALTO DEL PRIMER BATCH
+    accuracies[1] = accuracies[2]
+    # @assert length(accuracies) == length(batches)
+    return accuracies
+
 end;
 
 function euclideanDistances(memory::Batch, instance::AbstractArray{<:Real,1})
@@ -752,11 +840,17 @@ function euclideanDistances(memory::Batch, instance::AbstractArray{<:Real,1})
 end;
 
 function predictKNN(memory::Batch, instance::AbstractArray{<:Real,1}, k::Int)
-    distance = euclideanDistances(memory,instance)
-    indices_vecinos = partialsortperm(distance, k) 
-    salidas_vecinos = memory[2][indices_vecinos]
+    _ , memoryOutputs = memory
+    distance = euclideanDistances(memory, instance)
+
+    # Obtener los índices de los k vecinos más cercanos
+    indices_vecinos = partialsortperm(distance, k)
+    salidas_vecinos = memoryOutputs[indices_vecinos]
+
+    # Calcular el valor de predicción utilizando la moda
     valor_prediccion = mode(salidas_vecinos)
-    return valor_prediccion 
+
+    return convert(eltype(memoryOutputs), valor_prediccion)
 end;
 
 function predictKNN(memory::Batch, instances::AbstractArray{<:Real,2}, k::Int)
@@ -766,11 +860,26 @@ function predictKNN(memory::Batch, instances::AbstractArray{<:Real,2}, k::Int)
 end;
 
 function streamLearning_KNN(datasetFolder::String, windowSize::Int, batchSize::Int, k::Int)
-    #
-    # Codigo a desarrollar
-    #
-end;
 
+    # Inicializar memoria y batches
+    memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
+
+    num_batches = length(batches)
+    accuracies = Vector{Float32}(undef, num_batches)
+
+    for idx in 1:num_batches
+        # Test del modelo actual
+        X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
+        y_pred = predictKNN(memory, X_batch, k)
+        accuracies[idx] = mean(y_pred .== y_batch)
+
+        # Actualizar memoria con i-esimo batch
+        addBatch!(memory, batches[idx])
+    end
+
+    @assert length(accuracies) == length(batches)
+    return accuracies
+end;
 
 
 
@@ -780,13 +889,28 @@ end;
 
 
 function predictKNN_SVM(dataset::Batch, instance::AbstractArray{<:Real,1}, k::Int, C::Real)
-    #
-    # Codigo a desarrollar
-    #
+
+    memory, labels = dataset
+    distance = euclideanDistances(dataset, instance)
+    minDistances = partialsortperm(distance, k)
+
+    # Todas son de la misma clase
+    if length(unique(labels[minDistances])) == 1
+        return labels[minDistances[1]]
+    end
+
+    # Creacion y entrenamiento del modelo
+    model = SVC(kernel="linear", C=C, random_state=1)
+    inputs = memory[minDistances, :]
+    targets = labels[minDistances]
+    fit!(model, inputs, targets)
+
+    # Prediccion de la instancia
+    pred = predict(model, reshape(instance, 1, :))
+    return convert(eltype(labels), pred[1])
 end;
 
 function predictKNN_SVM(dataset::Batch, instances::AbstractArray{<:Real,2}, k::Int, C::Real)
-    #
-    # Codigo a desarrollar
-    #
+    predictions = [predictKNN_SVM(dataset, instance, k, C) for instance in eachrow(instances)]  
+    return predictions
 end;

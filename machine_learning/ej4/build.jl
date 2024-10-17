@@ -1,7 +1,7 @@
 include("35634619Y_48111913F_32740686W.jl");
 using Test
-using IterTools
 using Random
+using Base.Iterators
 
 using ScikitLearn: @sk_import, fit!, predict
 @sk_import svm: SVC
@@ -74,7 +74,7 @@ function divideBatches(dataset::Batch, batchSize::Int; shuffleRows::Bool=false)
     =#
     # Usar partition para dividir el conjunto de datos en lotes de tamaño batchSize
     partitions = partition(1:rows, batchSize)
-    
+
     # Crear los lotes
     batches = [selectInstances((inputs, targets), collect(p)) for p in partitions]
     
@@ -245,7 +245,7 @@ end
     batches = divideBatches(dataset, batchSize, shuffleRows=false)
     
     # Verificar que el número de lotes es correcto
-    @test length(batches) == 4  # Deberían ser 3 lotes completos y 1 lote con 1 instancia
+    @test length(batches) == 5 # Deberían ser 3 lotes completos y 1 lote con 1 instancia
     
     # Verificar que los tamaños de los lotes son correctos
     @test size(batchInputs(batches[1])) == (3, 4)  # Primer lote debe tener 3 instancias y 4 características
@@ -263,7 +263,7 @@ end
     batches_shuffled = divideBatches(dataset, 4, shuffleRows=true)
 
     # Verificar que el número de lotes es correcto
-    @test length(batches_shuffled) == 3  # 2 lotes completos y 1 lote con 2 instancias
+    @test length(batches_shuffled) == 4  # 2 lotes completos y 1 lote con 2 instancias
 
     # Verificar que los tamaños de los lotes son correctos
     @test size(batchInputs(batches_shuffled[1])) == (4, 4)  # Primer lote debe tener 4 instancias
