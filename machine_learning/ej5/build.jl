@@ -349,3 +349,54 @@ end
     # Test para verificar que las precisiones son de tipo Float32
     @test all(typeof(acc) == Float32 for acc in accuracies)
 end
+
+
+@testset "addBatch! tests" begin
+
+    windowSize = 5
+    batchSize = 5
+
+    memory, batches = initializeStreamLearningData("machine_learning/dataset/", windowSize, batchSize)
+
+    # Caso 2: Actualización de la memoria con un nuevo lote
+    newBatch = batches[1]
+    addBatch!(memory, newBatch)
+
+    # Verificar que la memoria se actualizó correctamente
+    @test size(memory[1], 1) == windowSize
+    @test length(memory[2]) == windowSize
+    @test memory[1][end-batchSize+1:end, :] == newBatch[1][1:batchSize, :]
+    @test memory[2][end-batchSize+1:end] == newBatch[2]
+
+    # Test para BoundsError: Verificar que se arroja un error cuando el nuevo lote es más grande que la memoria
+    largeBatch = (rand(windowSize + 1, size(memory[1], 2)), rand(windowSize + 1))
+    @test_throws BoundsError addBatch!(memory, largeBatch)
+end
+
+
+@testset "predictKNN tests" begin
+    windowSize = 5
+    batchSize = 5
+    memory, _ = initializeStreamLearningData("machine_learning/dataset/", windowSize, batchSize)
+    
+    # Crear una instancia para realizar la predicción
+    instance = rand(Float32, 7)  # Una instancia con 4 características
+    k = 3
+
+    # Caso 1: Predicción con k = 3
+    valor_prediccion = predictKNN(memory, instance, k)
+    
+    # Verificar que la predicción tiene el mismo tipo que las salidas deseadas
+    @test typeof(valor_prediccion) == typeof(memory[2][1])
+    @test valor_prediccion in unique(memory[2])
+
+    # Caso 2: Predicción para múltiples instancias
+    instances = rand(Float32, 3, 7)  # 3 instancias, 7 características
+    predicciones = predictKNN(memory, instances, k)
+    
+    # Verificar que las predicciones tienen el mismo tipo que las salidas deseadas
+    @test length(predicciones) == size(instances, 1)
+    @test all(typeof(pred) == typeof(memory[2][1]) for pred in predicciones)
+    @test all(pred in unique(memory[2]) for pred in predicciones)
+end
+

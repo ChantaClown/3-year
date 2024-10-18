@@ -733,30 +733,35 @@ function initializeStreamLearningData(datasetFolder::String, windowSize::Int, ba
     return memory, batches
 end;
 
-#=
- = SI FALLA USAR EL BROADCAST AL FINAL
- =#
 function addBatch!(memory::Batch, newBatch::Batch)
   
     # Desempaquetar la memoria actual y el nuevo lote de datos
     memoryInputs, memoryOutputs = memory
     newInputs, newOutputs = newBatch
     # Número de instancias del nuevo lote
+    # Número de instancias del nuevo lote
     batchSize = size(newInputs, 1)
+    memorySize = size(memoryInputs, 1)
+
     # Desplazar la memoria hacia adelante, eliminando los datos más antiguos
-    memoryInputs[:, 1:end-batchSize] = memoryInputs[:, batchSize+1:end]
-    memoryOutputs[1:end-batchSize] = memoryOutputs[batchSize+1:end]
-    
+    memoryInputs[1:memorySize-batchSize, :] .= memoryInputs[batchSize+1:end, :]
+    memoryOutputs[1:memorySize-batchSize] .= memoryOutputs[batchSize+1:end]
+
     # Añadir los nuevos datos al final de la memoria
-    memoryInputs[:, end-batchSize+1:end] = newInputs[:, 1:batchSize]
-    memoryOutputs[end-batchSize+1:end] = newOutputs[1:batchSize]
+    memoryInputs[end-batchSize+1:end, :] .= newInputs
+    memoryOutputs[end-batchSize+1:end] .= newOutputs
 end;
+
 
 function streamLearning_SVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
 
     # Inicializar memoria y batches
     memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
+    # Verificar que los datos están correctamente inicializados
+    @assert size(memory[1], 1) == windowSize
+    @assert size(memory[2], 1) == windowSize
+
     # Primer SVM
     model, supportVectors, _ = trainSVM(memory, kernel, C; degree, gamma, coef0)
 
@@ -766,7 +771,13 @@ function streamLearning_SVM(datasetFolder::String, windowSize::Int, batchSize::I
     for idx in 1:num_batches
         # Test del modelo actual
         X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
+        # Verificar que las dimensiones de X_batch y y_batch coinciden
+        @assert size(X_batch, 1) == length(y_batch)
+        
         y_pred = predict(model, X_batch)
+        # Verificar que las dimensiones de y_pred y y_batch coinciden
+        @assert length(y_pred) == length(y_batch)
+        
         accuracies[idx] = mean(y_pred .== y_batch)
         # Actualizar memoria con i-esimo batch
         addBatch!(memory, batches[idx])
@@ -776,7 +787,8 @@ function streamLearning_SVM(datasetFolder::String, windowSize::Int, batchSize::I
 
     @assert length(accuracies) == length(batches)
     return accuracies
-end;
+end
+
 
 function streamLearning_ISVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
@@ -839,18 +851,15 @@ function euclideanDistances(memory::Batch, instance::AbstractArray{<:Real,1})
     return distancias_vector
 end;
 
-function predictKNN(memory::Batch, instance::AbstractArray{<:Real,1}, k::Int)
-    _ , memoryOutputs = memory
-    distance = euclideanDistances(memory, instance)
 
-    # Obtener los índices de los k vecinos más cercanos
-    indices_vecinos = partialsortperm(distance, k)
-    salidas_vecinos = memoryOutputs[indices_vecinos]
 
-    # Calcular el valor de predicción utilizando la moda
+function predictKNN(memory::Batch, instance::AbstractArray{<:Real,1}, k::Int) 
+    distance = euclideanDistances(memory,instance)
+    indices_vecinos = partialsortperm(distance, 1:k) 
+    salidas_vecinos = memory[2][indices_vecinos]
     valor_prediccion = mode(salidas_vecinos)
+    return valor_prediccion 
 
-    return convert(eltype(memoryOutputs), valor_prediccion)
 end;
 
 function predictKNN(memory::Batch, instances::AbstractArray{<:Real,2}, k::Int)
@@ -888,14 +897,30 @@ end;
 # ----------------------------------------------------------------------------------------------
 
 
+
 function predictKNN_SVM(dataset::Batch, instance::AbstractArray{<:Real,1}, k::Int, C::Real)
-    #
-    # Codigo a desarrollar
-    #
+
+    memory, labels = dataset
+    distance = euclideanDistances(dataset, instance)
+    minDistances = partialsortperm(distance, k)
+
+    # Todas son de la misma clase
+    if length(unique(labels[minDistances])) == 1
+        return labels[minDistances[1]]
+    end
+
+    # Creacion y entrenamiento del modelo
+    model = SVC(kernel="linear", C=C, random_state=1)
+    inputs = memory[minDistances, :]
+    targets = labels[minDistances]
+    fit!(model, inputs, targets)
+
+    # Prediccion de la instancia
+    pred = predict(model, reshape(instance, 1, :))
+    return convert(eltype(labels), pred[1])
 end;
 
 function predictKNN_SVM(dataset::Batch, instances::AbstractArray{<:Real,2}, k::Int, C::Real)
-    #
-    # Codigo a desarrollar
-    #
+    predictions = [predictKNN_SVM(dataset, instance, k, C) for instance in eachrow(instances)]  
+    return predictions
 end;
