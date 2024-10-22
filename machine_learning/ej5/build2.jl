@@ -6,77 +6,46 @@ using Random
 # ------------------------------------- Ejercicio 5 --------------------------------------------
 # ----------------------------------------------------------------------------------------------
 
-
-function streamLearning_SVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
-    degree::Real=1, gamma::Real=2, coef0::Real=0.)
-
-    # Inicializar memoria y batches
-    memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
-    # Primer SVM
-    model, _, _ = trainSVM(memory, kernel, C; degree=degree, gamma=gamma, coef0=coef0)
-
-    num_batches = length(batches)
-    accuracies = Vector{Float32}(undef, num_batches)
-
-    for idx in 1:num_batches
-        # Test del modelo actual
-        X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
-
-        y_pred = predict(model, X_batch)
-        
-        accuracies[idx] = mean(y_pred .== y_batch)
-
-        # Actualizar memoria con i-esimo batch
-        addBatch!(memory, batches[idx])
-        # Entrenar de nuevo el modelo usando los vectores de soporte
-        model, _, _ = trainSVM(memory, kernel, C; degree, gamma, coef0)
-    end
-
-    @assert length(accuracies) == length(batches)
-    return accuracies
-end;
-
-
 function streamLearning_ISVM(datasetFolder::String, windowSize::Int, batchSize::Int, kernel::String, C::Real;
     degree::Real=1, gamma::Real=2, coef0::Real=0.)
 
     # Inicializar memoria y batches
     memory, batches = initializeStreamLearningData(datasetFolder, batchSize, batchSize)
     # Primer SVM
-    model, supportVectors, indicesSupportVectorsInFirstBatch = trainSVM(memory, kernel, C; degree, gamma, coef0)
+    model, supportVectors, (_, indicesSupportVectorsInFirstBatch) = trainSVM(memory, kernel, C; degree, gamma, coef0)  # 3 argumento es tupla
 
     num_batches = length(batches)
     # batchSize = el  más  antiguo,  1  = el  más  reciente.
     age_vector = collect(batchSize:-1:1)
-    vectorAge = age_vector[indicesSupportVectorsInFirstBatch[2]]
-    accuracies = Float32[]
+    vectorAge = age_vector[indicesSupportVectorsInFirstBatch]
+    accuracies = Vector{Float32}(undef, num_batches)
 
-    for idx in 2:num_batches
+    for idx in 1:num_batches
         # Test del modelo actual
         X_batch, y_batch = batchInputs(batches[idx]), batchTargets(batches[idx])
         y_pred = predict(model, X_batch)
-        push!(accuracies, mean(y_pred .== y_batch))
-
+        accuracies[idx] = mean(y_pred .== y_batch)
+        # UNICA MODIFICACION
+        actualLength = batchLength(batches[idx])
         # Actualizar la edad de los vectores
-        vectorAge .+= batchSize
+        vectorAge .+= actualLength
         indices = findall(x -> x <= windowSize, vectorAge)
         supportVectors = selectInstances(supportVectors, indices)
         vectorAge = vectorAge[indices]
         
         
         # Entrenar de nuevo el modelo usando los vectores de soporte
-        model, supportVectors, (indicesSupportVectorsOld, indicesSupportVectorsBatch) = trainSVM(
+        model, _, (indicesSupportVectorsOld, indicesSupportVectorsBatch) = trainSVM(
             batches[idx], kernel, C; degree=degree, gamma=gamma, coef0=coef0, supportVectors=supportVectors)
 
         # Crear nuevo lote de datos con los nuevos vectores de soporte
         newSupportVectorsOld = selectInstances(supportVectors, indicesSupportVectorsOld)
-        # FALLO EN EL INDICES SUP
         newSupportVectorsBatch = selectInstances(batches[idx], indicesSupportVectorsBatch)
         supportVectors = joinBatches(newSupportVectorsOld, newSupportVectorsBatch)
-        
+
         # Actualizar vector de edades de los nuevos vectores de soporte
         vectorAgeOld = vectorAge[indicesSupportVectorsOld]
-        batch_age_vector = collect(batchSize:-1:1)
+        batch_age_vector = collect(actualLength:-1:1)
         vectorAgeBatch = batch_age_vector[indicesSupportVectorsBatch]
         vectorAge = vcat(vectorAgeOld, vectorAgeBatch)
     end
@@ -92,7 +61,7 @@ end;
 using Test
 
 # Definir los parámetros de entrada
-datasetFolder = "machine_learning/dataset"  # Ruta al dataset
+datasetFolder = "machine_learning/test"  # Ruta al dataset
 windowSize = 100     # Tamaño de la memoria inicial
 batchSize = 100      # Tamaño de cada lote
 kernel = "linear"    # Kernel a usar en el SVM
@@ -101,13 +70,13 @@ C = 1.0              # Parámetro de regularización
 memory, batches = initializeStreamLearningData(datasetFolder, windowSize, batchSize)
 size(memory[1])
 # Llamar a la función
-accuracies = streamLearning_SVM(datasetFolder, windowSize, batchSize, kernel, C)
+accuracies = streamLearning_ISVM(datasetFolder, windowSize, batchSize, kernel, C)
 accuracies2 = streamLearning_KNN(datasetFolder, windowSize, batchSize, 3)
 
 @test typeof(accuracies) == typeof(accuracies2)
 
 # Test: Verificar que la longitud del vector accuracies es la esperada
-@test length(accuracies) == (45312 - windowSize) ÷ batchSize + 1
+@test length(accuracies) == (800 + windowSize) ÷ batchSize
 
 # Test: Verificar que todos los valores de accuracies están entre 0 y 1 (ya que son precisiones)
 @test all(accuracies .>= 0) && all(accuracies .<= 1)
@@ -120,14 +89,12 @@ println("Todos los tests han pasado.")
 
 
 
-@testset "Pruebas de streamLearning_ISVM" begin
 
-    datasetFolder = "machine_learning/test/"
+    datasetFolder = "machine_learning/test"
     windowSize = 200
     batchSize = 200
     kernel = "linear"
     C = 1.0
-
     # Prueba para verificar que la longitud del vector de precisiones es correcta
     accuracies = streamLearning_ISVM(datasetFolder, windowSize, batchSize, kernel, C)
     expected_length = length(accuracies)

@@ -4,14 +4,13 @@ using Random
 
 function predictKNN_SVM(dataset::Batch, instance::AbstractArray{<:Real,1}, k::Int, C::Real)
 
-
     inputs, targets = dataset
     distance = euclideanDistances(dataset, instance)
     minDistances = partialsortperm(distance, 1:k)
     
     # Todas son de la misma clase
-    if length(unique(labels[minDistances])) == 1
-        return labels[minDistances[1]]
+    if length(unique(targets[minDistances])) == 1
+        return targets[minDistances[1]]
     end
     
     # Creacion y entrenamiento del modelo
@@ -21,7 +20,7 @@ function predictKNN_SVM(dataset::Batch, instance::AbstractArray{<:Real,1}, k::In
     fit!(model, inputs, targets)
     
     # Prediccion de la instancia
-    pred = predict(model, reshape(instance, 1, :))
+    pred = predict(model, reshape(instance, 1, :))[1]
     
     return pred
 end;
@@ -31,56 +30,31 @@ function predictKNN_SVM(dataset::Batch, instances::AbstractArray{<:Real,2}, k::I
     return predictions
 end;
 
-# Configuración de los datos
-windowSize = 5
-batchSize = 5
-memory, _ = initializeStreamLearningData("machine_learning/dataset/", windowSize, batchSize)
+using Test
 
-# Crear una instancia para realizar la predicción con el mismo número de características
-instance = rand(Float32, size(memory[1], 2))
-k = 3
-C = 1.0
+@testset "predictKNN_SVM tests" begin
+    windowSize = 5
+    batchSize = 5
+    memory, _ = initializeStreamLearningData("machine_learning/test/", windowSize, batchSize)
 
-# Caso 1: Predicción con k = 3 y C = 1.0
-println("Caso 1: Predicción con k = 3 y C = 1.0")
-valor_prediccion_1 = predictKNN_SVM(memory, instance, k, C)
-println("Predicción (k=3, C=1.0): ", valor_prediccion_1)
+    # Create a random instance for prediction with 7 features
+    instance = rand(Float32, 7)
+    k = 3
+    C = 1.0  # SVM regularization parameter
 
-# Caso 2: Predicción con k = 5 y C = 0.5
-println("\nCaso 2: Predicción con k = 5 y C = 0.5")
-k2 = 5
-C2 = 0.5
+    # Case 1: Prediction with k = 3 for a single instance
+    valor_prediccion = predictKNN_SVM(memory, instance, k, C)
 
-valor_prediccion_2 = predictKNN_SVM(memory, instance, k2, C2)
-println("Predicción (k=5, C=0.5): ", valor_prediccion_2)
+    # Verify that the prediction has the same type as the desired outputs
+    @test typeof(valor_prediccion) == typeof(memory[2][1])
+    @test valor_prediccion in unique(memory[2])
 
-# Caso 3: Predicción con k = 1 y C = 1.0
-println("\nCaso 3: Predicción con k = 1 y C = 1.0")
-k3 = 1
+    # Case 2: Prediction for multiple instances
+    instances = rand(Float32, 3, 7)  # 3 instances, each with 7 features
+    predicciones = predictKNN_SVM(memory, instances, k, C)
 
-valor_prediccion_3 = predictKNN_SVM(memory, instance, k3, C)
-println("Predicción (k=1, C=1.0): ", valor_prediccion_3)
-
-
-
-# Configuración de los datos
-windowSize = 5
-batchSize = 5
-memory, _ = initializeStreamLearningData("machine_learning/dataset/", windowSize, batchSize)
-
-# Crear una matriz de instancias para realizar las predicciones
-# Suponiendo que las instancias tienen el mismo número de características que los datos en 'memory'
-num_features = size(memory[1], 2)
-num_instances = 3  # Número de instancias a predecir
-instances = rand(Float32, num_instances, num_features)  # Matriz de instancias
-
-k = 3
-C = 1.0
-
-# Prueba 2: Predicciones con una sola instancia en la matriz (debe comportarse como una predicción individual)
-println("\nPrueba 2: Predicciones con una sola instancia")
-single_instance = instances[1:1, :]  # Tomar la primera instancia como una submatriz (1 fila)
-valor_prediccion_single = predictKNN_SVM(memory, single_instance, k, C)
-println("Predicción para la única instancia:")
-println(valor_prediccion_single)
-
+    # Verify that the predictions have the same type as the desired outputs
+    @test length(predicciones) == size(instances, 1)
+    @test all(typeof(pred) == typeof(memory[2][1]) for pred in predicciones)
+    @test all(pred in unique(memory[2]) for pred in predicciones)
+end
