@@ -1,0 +1,26 @@
+Cojer tarea TM1 -> Aplicar plantilla segun nuestras necesidades
+
+Configuracion
+Assigment
+
+
+Hacer Esquemas
+
+	1 - Encaja bien
+	2 - Cambiar poco -> Preguntar
+	3 - Todo mal -> Cambiar plantilla o escenario
+	
+Soft -> Requisitos secundarios pero que hay que cumplir a no ser que sean imposibles
+Hard -> Requisistos esenciales
+
+Lisiado 1:
+
+Persona que le falta una pierna, mayor y problemas de huesos, debido a una (1*)enfermedad no puede acceder a una parte de la casa. No le sale de los huevos andar con muletas. Quinto sin ascensor = skill issue.
+	1* Le comio la pierna un tigre de sable
+
+
+Cama que se incorpore, puertas automaticas, asistente por voz, 
+
+Lisiado 2:
+
+Ciego que no encuentra la luz
