@@ -13,14 +13,17 @@ Hacer Esquemas
 Soft -> Requisitos secundarios pero que hay que cumplir a no ser que sean imposibles
 Hard -> Requisistos esenciales
 
-Lisiado 1:
+Ejemplo de Usuario:
 
-Persona que le falta una pierna, mayor y problemas de huesos, debido a una (1*)enfermedad no puede acceder a una parte de la casa. No le sale de los huevos andar con muletas. Quinto sin ascensor = skill issue.
-	1* Le comio la pierna un tigre de sable
+Ana García, de 68 años, vive sola en una casa de dos plantas. Tiene artritis reumatoide avanzada que limita su movilidad y sufre deterioro cognitivo leve que afecta su memoria a corto plazo. Necesita ayuda para moverse por su hogar, recordar tareas importantes y mejorar su seguridad.
 
+Soluciones Propuestas:
 
-Cama que se incorpore, puertas automaticas, asistente por voz, 
-
-Lisiado 2:
-
-Ciego que no encuentra la luz
+    Salvaescaleras: Facilita el acceso al segundo piso.
+    Iluminación Automática: Sensores de movimiento para evitar accidentes.
+    Asistente de Voz: Para recordatorios de medicamentos y control de dispositivos.
+    Electrodomésticos Inteligentes: Con apagado automático y controles simples.
+    Monitoreo de Salud: Dispositivos que supervisan signos vitales.
+    Pulsera de Emergencia: Con detección de caídas y alertas a familiares.
+    Adaptaciones en el Baño: Barras de apoyo y suelo antideslizante.
+    Aplicación para Familiares: Permite monitorear su bienestar en tiempo real.
