@@ -10,8 +10,21 @@ Hacer Esquemas
 	2 - Cambiar poco -> Preguntar
 	3 - Todo mal -> Cambiar plantilla o escenario
 	
-Soft -> Requisitos secundarios pero que hay que cumplir a no ser que sean imposibles
-Hard -> Requisistos esenciales
+### Hard Requirements (Requisitos esenciales)
+
+1. **Sistema de Salvaescaleras**: Permitir a Ana desplazarse entre pisos de forma segura y sin esfuerzo.
+2. **Sistema de Detección de Caídas**: Una pulsera o dispositivo con detección automática de caídas, que envíe una alerta a sus familiares y servicios de emergencia si ocurre una caída.
+3. **Asistente de Voz Inteligente**: Para recordarle la toma de medicamentos y otras actividades importantes, como citas médicas.
+4. **Iluminación Automática**: Sensores de movimiento en puntos clave de la casa para activar la iluminación automáticamente, minimizando el riesgo de caídas en zonas oscuras.
+5. **Electrodomésticos con Apagado Automático**: Cocina y horno con apagado automático para prevenir incendios o accidentes en caso de que Ana olvide apagar algún aparato.
+
+### Soft Requirements (Requisitos complementarios)
+
+1. **Aplicación para Monitoreo de Familiares**: Una aplicación que permita a sus hijos monitorear en tiempo real su estado y recibir notificaciones si ocurre algún evento importante, como una caída.
+2. **Adaptaciones en el Baño**: Barras de apoyo, asiento de ducha y suelo antideslizante para mayor seguridad y comodidad al bañarse.
+3. **Monitoreo de Signos Vitales**: Dispositivos adicionales que supervisen su presión arterial y ritmo cardíaco, enviando alertas si detectan anomalías.
+4. **Sensores de Calidad del Aire**: Para monitorear niveles de calidad de aire y ventilación, especialmente si Ana padece alguna condición respiratoria.
+5. **Asistente de Voz con Funcionalidad de Llamadas**: Que permita a Ana hacer llamadas de emergencia a sus familiares mediante comandos de voz, sin necesidad de usar un teléfono.
 
 Ejemplo de Usuario:
 
