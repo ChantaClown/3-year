@@ -3,6 +3,7 @@
 /machine_learning/dataset/
 /computer_vision/Computer-Vision
 /machine_learning/MNIST.jld2
+deep_learning/DL
 # Optionally ignore other files or directories
 *.pyc
 __pycache__/
