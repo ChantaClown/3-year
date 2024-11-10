@@ -4,6 +4,8 @@
 /computer_vision/Computer-Vision
 /machine_learning/MNIST.jld2
 deep_learning/DL
+computer_vision/roads
+
 # Optionally ignore other files or directories
 *.pyc
 __pycache__/
