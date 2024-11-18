@@ -1,0 +1,4 @@
+optimizador global -> dos ordenes menos
+hacer suffle en el "fit"
+
+freeze -> en gradient tape solo los que se actualizan no los que se congelan
